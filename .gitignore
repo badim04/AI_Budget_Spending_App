@@ -37,3 +37,14 @@ ios/
 *.p8
 *.mobileprovision
 credentials.json
+
+# --- added by github_auto_sync ---
+config.txt
+*.pem
+*.key
+__pycache__/
+*.pyc
+.api_cache/
+*_profile/
+*.rar
+*.zip
