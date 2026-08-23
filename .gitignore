@@ -29,3 +29,11 @@ ios/
 .wrangler/
 .dev.vars
 .dev.vars.*
+
+# signing material - NEVER commit; losing control of these means
+# someone else can ship an update signed as your app
+*.jks
+*.p12
+*.p8
+*.mobileprovision
+credentials.json

@@ -4,7 +4,7 @@
     "slug": "budgetspenderappfinlo",
     "version": "0.1.0",
     "orientation": "portrait",
-    "scheme": "finlo",
+    "scheme": ["finlo", "com.googleusercontent.apps.836910230421-ml8328q4nbijg4bo09lqcsb5pg7l9i64"],
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "icon": "./assets/icon.png",
