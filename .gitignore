@@ -24,3 +24,8 @@ ios/
 *.aab
 *.keystore
 .eas/
+
+# cloudflare worker local state + local secrets
+.wrangler/
+.dev.vars
+.dev.vars.*

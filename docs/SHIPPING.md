@@ -42,6 +42,35 @@ outside the Play Store; they tap through it once.
 
 No Android Studio, no Java, no Mac required — it builds on Expo's servers.
 
+### If the build stops before it starts
+
+**"It looks like you haven't initialized the git repository yet."**
+Answer **yes**. EAS needs a git repo to know what to upload. It makes one commit
+called "Initial v1". Nothing secret goes in — `.env`, `node_modules` and `dist`
+are all gitignored, and I verified the key appears in zero commits.
+
+**"Slug for project identified by extra.eas.projectId (...) does not match the
+slug field (finlo)."**
+This is the one that stopped your build. Your Expo project is called
+`Budget_Spender_App…`; `app.json` says `finlo`. Pick either fix:
+
+- **Rename the Expo project** (recommended, keeps everything else working):
+  expo.dev → your project → Project settings → General → rename to `finlo`.
+  The projectId and the updates URL are unaffected.
+- **Or match app.json to the project**: run `npx eas-cli@latest project:info`,
+  read the slug it prints, and set `"slug"` in `app.json` to exactly that.
+
+Then `npm run apk` again.
+
+**Check what actually happened:**
+
+```bash
+npx eas-cli@latest build:list --platform android --limit 5
+```
+
+If nothing is listed, no build ever started. Every build also appears at
+expo.dev → your project → Builds, with its logs.
+
 ### iPhone
 
 `npm run ios:build` works but needs a paid **Apple Developer** account
@@ -120,17 +149,20 @@ is 25,000 receipts/month.
 The order matters: the Android OAuth client needs a SHA-1 fingerprint that does
 not exist until EAS has created your keystore.
 
-**Step 1 — get your SHA-1.** I cannot generate this; it belongs to the signing
-keystore EAS creates for you. After `npm run apk` finishes:
+**Step 1 — get your SHA-1.** I cannot generate this; it belongs to a signing
+keystore that only exists once EAS creates one for you. **You do not need a
+successful build** — you can create the keystore directly:
 
 ```bash
-eas credentials
+npx eas-cli@latest credentials
 ```
 
-Choose **Android → production → Keystore → Show keystore fingerprints**, and
-copy the **SHA-1**. (Or in the Expo dashboard: your project → Credentials →
-Android → the application identifier → the SHA-1 is listed there. That is the
-wizard in your screenshot — finish it and the fingerprint appears.)
+Choose **Android → production → Keystore → Set up a new keystore** (let EAS
+generate it), then **Show keystore fingerprints** and copy the **SHA-1**.
+
+That is exactly the "New application identifier" wizard in your Expo dashboard
+screenshot — finishing it produces the same keystore, and the SHA-1 then appears
+under Credentials → Android.
 
 **Step 2 — create the OAuth clients.** In Google Cloud Console → Credentials →
 Create credentials → OAuth client ID. You need **two**, not one:
@@ -179,24 +211,56 @@ Then Settings → Connect Gmail.
 > Client IDs are not secrets — Google's flow assumes they are public. The
 > consent screen is what protects the account.
 
-### Gemini (AI categorisation) — already configured
+### Gemini (AI categorisation) — move it behind the proxy before you share
 
-Your key is in `.env` as `EXPO_PUBLIC_GEMINI_API_KEY`. It works now, on web and
-in the APK.
+Your key works right now. But you said you are sending the APK to a bunch of
+people, including strangers — so it has to move before you do that.
 
-**Two things to know.** `EXPO_PUBLIC_*` values are compiled into the app bundle,
-so anyone who unzips the APK can read that key. And it is in our chat
-transcript. Both mean you should:
+**The problem.** `EXPO_PUBLIC_*` values are compiled into the JavaScript inside
+the APK. Anyone who gets that file can unzip it and read your Gemini key in
+about a minute. No skill required. They can then spend your quota, and on a
+billed key, your money. Capping the quota limits the damage; it does not stop it.
 
-1. Cap it — [Google AI Studio](https://aistudio.google.com/apikey) → restrict
-   the key to the Generative Language API and set a quota.
-2. Rotate it before you share the APK widely, and again before any public
-   release.
+**The fix, ~3 minutes, free, no card:** a tiny Cloudflare Worker that holds the
+key. I have written and configured it — see
+[`server/llm-proxy/README.md`](../server/llm-proxy/README.md).
 
-For a public release, stand up a tiny proxy that holds the key server-side and
-set `EXPO_PUBLIC_LLM_PROXY_URL` instead. The app already prefers the proxy when
-that variable is present — no code change needed. Settings shows which
-transport is live and warns when the key is in the bundle.
+```bash
+cd server/llm-proxy && npm install
+npx wrangler login
+npx wrangler secret put GEMINI_API_KEY     # paste your key
+npx wrangler secret put APP_TOKEN          # any long random string
+npm run deploy
+```
+
+Then in the app's `.env`:
+
+```
+EXPO_PUBLIC_LLM_PROXY_URL=https://finlo-llm-proxy.your-subdomain.workers.dev
+EXPO_PUBLIC_LLM_PROXY_TOKEN=that_random_string
+EXPO_PUBLIC_GEMINI_API_KEY=
+```
+
+Blank the Gemini line — otherwise it still ships in the bundle even though the
+proxy takes priority. Rebuild (`npm run apk`), and Settings → Smart
+categorisation reads **AI fallback: Proxy** with no warning.
+
+**Be clear about what this buys.** Your Gemini key becomes completely
+unreachable — that part is absolute. The app token still ships in the bundle, so
+a determined person could still call your worker. What changes is that you gain
+control you did not have:
+
+| | Key in the APK | Behind the proxy |
+|---|---|---|
+| What a stranger can extract | Your Gemini key | A token that only works on your worker |
+| Revoking it | Everyone reinstalls | Rotate + `npm run push`, done in a minute |
+| Spend ceiling | Whatever Google allows | Whatever you set |
+| Turning it off | Impossible | One flag, redeploy |
+| Rate limiting | None | 60/hour per IP |
+
+**Regardless:** rotate the current key at
+[aistudio.google.com/apikey](https://aistudio.google.com/apikey) — it has been
+in a chat transcript — and set a quota cap on the replacement.
 
 ## 5. What is built now, and what is left
 

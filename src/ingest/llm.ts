@@ -22,6 +22,9 @@ import type { Category, ID } from '../core/types';
 
 const PROXY_URL = process.env.EXPO_PUBLIC_LLM_PROXY_URL ?? '';
 const GEMINI_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY ?? '';
+/** Sent to the proxy so old app copies can be cut off by rotating it there
+ *  and pushing an OTA update. Not a secret — it ships in the bundle too. */
+const PROXY_TOKEN = process.env.EXPO_PUBLIC_LLM_PROXY_TOKEN ?? '';
 const GEMINI_MODEL = 'gemini-2.0-flash';
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
@@ -41,7 +44,9 @@ export function llmStatus(): LlmStatus {
       transport: 'proxy',
       name: 'Proxy',
       keyInBundle: false,
-      note: 'Requests go through your server; the key never ships in the app.',
+      note: PROXY_TOKEN
+        ? 'Requests go through your server. The Gemini key never ships in the app, and the app token can be rotated remotely.'
+        : 'Requests go through your server; the Gemini key never ships in the app. Set EXPO_PUBLIC_LLM_PROXY_TOKEN to gate it.',
     };
   }
   if (GEMINI_KEY) {
@@ -177,7 +182,10 @@ async function callProxy(
 ): Promise<string> {
   const res = await fetch(PROXY_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(PROXY_TOKEN ? { 'x-finlo-token': PROXY_TOKEN } : {}),
+    },
     signal,
     body: JSON.stringify({
       descriptors,

@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Finlo",
-    "slug": "finlo",
+    "slug": "budgetspenderappfinlo",
     "version": "0.1.0",
     "orientation": "portrait",
     "scheme": "finlo",
@@ -68,7 +68,7 @@
     "experiments": {
       "typedRoutes": true
     },
-    "owner": "badim04",
+    "owner": "badim04s-team",
     "extra": {
       "eas": {
         "projectId": "240fc2a2-71ba-4e64-b2b8-29efd995522d"
