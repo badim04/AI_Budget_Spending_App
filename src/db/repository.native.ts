@@ -5,6 +5,10 @@
  * never sees expo-sqlite. This is the driver that uses the real schema and
  * migrations from `schema.ts`.
  *
+ * NOTE: shared types come from `./repositoryShared`, never from `./repository`.
+ * On native the latter resolves to THIS file, so importing it is a self-import
+ * and re-exporting from it crashes the app at startup with a stack overflow.
+ *
  * Rows are stored the way SQLite is good at: money as INTEGER minor units,
  * booleans as 0/1, arrays as JSON text. Everything is converted back into the
  * domain shape on load, in exactly one place (the `row*` functions below), so a
@@ -13,7 +17,7 @@
 
 import * as SQLite from 'expo-sqlite';
 import { FTS_TRIGGERS, MIGRATIONS } from './schema';
-import { emptySnapshot, type Repository, type Snapshot } from './repository';
+import { emptySnapshot, type Repository, type Snapshot } from './repositoryShared';
 import type {
   Account,
   Budget,

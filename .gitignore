@@ -48,3 +48,6 @@ __pycache__/
 *_profile/
 *.rar
 *.zip
+
+# device crash logs
+crash.txt

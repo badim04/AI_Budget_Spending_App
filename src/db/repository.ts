@@ -1,5 +1,5 @@
 /**
- * Persistence — web driver, and the interface both drivers implement.
+ * Persistence — web driver.
  *
  * Metro resolves `./repository` to `repository.native.ts` on iOS/Android and to
  * this file everywhere else, so the browser never bundles expo-sqlite (which has
@@ -8,6 +8,9 @@
  * The read model lives in memory: the analytics engine takes plain arrays, so
  * queries never touch the driver. A repository only has to do two things —
  * hand back everything on boot, and durably record each change.
+ *
+ * Shared types live in `repositoryShared.ts`, NOT here — see the note in that
+ * file for why importing `./repository` from a platform variant is a trap.
  */
 
 import type {
@@ -22,63 +25,10 @@ import type {
 } from '../core/types';
 import type { CategoryRule } from '../core/categorize';
 import type { FxRate } from '../core/money';
+import { emptySnapshot, type Repository, type Snapshot } from './repositoryShared';
 
-export interface Snapshot {
-  accounts: Account[];
-  categories: Category[];
-  transactions: Transaction[];
-  budgets: Budget[];
-  recurringRules: RecurringRule[];
-  goals: Goal[];
-  receipts: Receipt[];
-  categoryRules: CategoryRule[];
-  fxRates: FxRate[];
-  settings: Record<string, string>;
-}
-
-export function emptySnapshot(): Snapshot {
-  return {
-    accounts: [],
-    categories: [],
-    transactions: [],
-    budgets: [],
-    recurringRules: [],
-    goals: [],
-    receipts: [],
-    categoryRules: [],
-    fxRates: [],
-    settings: {},
-  };
-}
-
-export interface Repository {
-  /** Platform label, surfaced in Settings so it is obvious where data lives. */
-  readonly kind: 'sqlite' | 'localstorage' | 'memory';
-  init(): Promise<void>;
-  loadSnapshot(): Promise<Snapshot>;
-
-  saveTransaction(t: Transaction): Promise<void>;
-  saveTransactions(ts: Transaction[]): Promise<void>;
-  deleteTransaction(id: ID): Promise<void>;
-
-  saveAccount(a: Account): Promise<void>;
-  saveCategory(c: Category): Promise<void>;
-  saveBudget(b: Budget): Promise<void>;
-  saveRecurringRule(r: RecurringRule): Promise<void>;
-  saveGoal(g: Goal): Promise<void>;
-  deleteGoal(id: ID): Promise<void>;
-  saveReceipt(r: Receipt): Promise<void>;
-  saveCategoryRule(r: CategoryRule): Promise<void>;
-  saveFxRates(rates: FxRate[]): Promise<void>;
-  setSetting(key: string, value: string): Promise<void>;
-
-  /** Ingestion bookkeeping, so a re-sync of the same mailbox is a no-op. */
-  isIngested(source: string, externalId: string): Promise<boolean>;
-  markIngested(source: string, externalId: string, transactionId?: ID): Promise<void>;
-
-  /** Wipes everything. Used by "Reset app data" in Settings. */
-  reset(): Promise<void>;
-}
+export { emptySnapshot };
+export type { Repository, Snapshot };
 
 // ------------------------------------------------------------- web driver
 
@@ -216,3 +166,4 @@ export function createRepository(): Repository {
   if (!instance) instance = new WebRepository();
   return instance;
 }
+
