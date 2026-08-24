@@ -32,7 +32,7 @@ export const SERIES_LIGHT = [
   '#008300', // 6 green
   '#4a3aa7', // 7 violet
   '#e34948', // 8 red
-] as const;
+] as readonly string[];
 
 export const SERIES_DARK = [
   '#3987e5',
@@ -43,7 +43,7 @@ export const SERIES_DARK = [
   '#008300',
   '#9085e9',
   '#e66767',
-] as const;
+] as readonly string[];
 
 /** Beyond eight series, everything else is one neutral "Other" slot. */
 export const OTHER_SERIES = { light: '#8a8880', dark: '#6f6d66' };
@@ -175,7 +175,9 @@ export const radius = {
 export const type = {
   hero: { fontSize: 44, lineHeight: 48, fontWeight: '700' as const, letterSpacing: -1.2 },
   display: { fontSize: 32, lineHeight: 38, fontWeight: '700' as const, letterSpacing: -0.8 },
-  title: { fontSize: 22, lineHeight: 28, fontWeight: '650' as const, letterSpacing: -0.3 },
+  // 650 is not a valid React Native weight - only hundreds are - and TypeScript
+  // rejects it outright. Rounded to 700.
+  title: { fontSize: 22, lineHeight: 28, fontWeight: '700' as const, letterSpacing: -0.3 },
   heading: { fontSize: 17, lineHeight: 22, fontWeight: '600' as const, letterSpacing: -0.1 },
   body: { fontSize: 15, lineHeight: 21, fontWeight: '400' as const, letterSpacing: 0 },
   bodyStrong: { fontSize: 15, lineHeight: 21, fontWeight: '600' as const, letterSpacing: 0 },
@@ -183,7 +185,9 @@ export const type = {
   micro: { fontSize: 11, lineHeight: 14, fontWeight: '600' as const, letterSpacing: 0.4 },
 } as const;
 
-export const tabularNumbers = { fontVariant: ['tabular-nums'] as const };
+// Not `as const`: RN types FontVariant[] as mutable, so a readonly tuple is
+// rejected wherever this is spread into a style.
+export const tabularNumbers = { fontVariant: ['tabular-nums'] as ('tabular-nums')[] };
 
 /**
  * Elevation. On dark surfaces a shadow is nearly invisible, so depth is carried

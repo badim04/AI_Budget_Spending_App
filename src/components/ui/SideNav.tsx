@@ -1,14 +1,9 @@
 /**
  * Side navigation rail.
  *
- * Vertical rather than a bottom bar, and responsive in three steps:
- *   - wide  (>= 900): 216pt, icons with labels beside them
- *   - medium(>= 600): 76pt rail, icon over a small label
- *   - narrow(<  600): 60pt rail, icon over a small label
- *
- * The rail persists at phone widths too. It costs ~60pt of horizontal space,
- * which the layouts absorb because the content column is already capped — a
- * money column wider than ~560pt gets harder to scan, not easier.
+ * Tablets and desktop only — phones get the bottom bar in `(tabs)/_layout.tsx`.
+ *   - wide   (>= 900): 216pt, icons with labels beside them
+ *   - medium (>= 600): 76pt rail, icon over a small label
  *
  * Safe-area insets are applied to the rail itself, so the notch and the home
  * indicator never sit on top of a nav item.
@@ -43,11 +38,17 @@ const ITEMS: NavItem[] = [
   { href: '/settings', label: 'Settings', icon: 'settings-outline', iconActive: 'settings' },
 ];
 
+/**
+ * `useRail` is the important one: below 600pt there is no rail at all and the
+ * bottom bar takes over. A 60pt rail on a 360pt phone costs 17% of the screen
+ * and pushed content underneath itself.
+ */
 export function useNavLayout() {
   const { width } = useWindowDimensions();
+  const useRail = width >= 600;
   const expanded = width >= 900;
-  const railWidth = expanded ? 216 : width >= 600 ? 76 : 60;
-  return { expanded, railWidth };
+  const railWidth = expanded ? 216 : 76;
+  return { useRail, expanded, railWidth };
 }
 
 export function SideNav() {

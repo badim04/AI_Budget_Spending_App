@@ -457,7 +457,7 @@ function Row({
 }: {
   label: string;
   value: string;
-  tone: 'good' | 'warning' | 'accent' | 'neutral';
+  tone?: 'good' | 'warning' | 'accent' | 'neutral';
   hint?: string;
 }) {
   const { c, type: t, space: sp } = useTheme();

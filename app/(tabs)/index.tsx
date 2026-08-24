@@ -28,6 +28,7 @@ import { useDashboardData } from '../../src/hooks/useDashboardData';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { Button } from '../../src/components/ui/Primitives';
+import { AppHeader } from '../../src/components/ui/AppHeader';
 
 export default function DashboardScreen() {
   const { c, type: t, space: sp, radius: r } = useTheme();
@@ -37,7 +38,10 @@ export default function DashboardScreen() {
 
   // Web stretches to the browser width; a money column past ~560pt just gets
   // harder to scan, so the content is centred and capped.
-  const contentWidth = Math.min(width, 560);
+  // Measured from the container, not the window: the window width ignores the
+  // side rail, which pushed the left edge of the screen underneath it.
+  const [measuredWidth, setMeasuredWidth] = React.useState(0);
+  const contentWidth = Math.min(measuredWidth || width, 560);
   const gutter = sp.lg;
   const chartWidth = contentWidth - gutter * 2 - sp.lg * 2;
 
@@ -53,12 +57,12 @@ export default function DashboardScreen() {
         style={{
           flex: 1,
           backgroundColor: c.canvas,
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: sp.xl,
-          paddingTop: insets.top + sp.xl,
+          paddingHorizontal: sp.xl,
+          paddingTop: insets.top + sp.lg,
         }}
       >
+        <AppHeader />
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
         <Ionicons name="pie-chart-outline" size={40} color={c.textMuted} />
         <Text style={[t.title, { color: c.textPrimary, marginTop: sp.lg, textAlign: 'center' }]}>
           Nothing to show yet
@@ -81,6 +85,7 @@ export default function DashboardScreen() {
             onPress={() => router.push('/settings')}
           />
         </View>
+        </View>
       </View>
     );
   }
@@ -88,15 +93,21 @@ export default function DashboardScreen() {
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: c.canvas }}
+      // onLayout gives the width actually available after the nav takes its
+      // share; the chart needs a real number, so it waits for this.
+      onLayout={(e) => setMeasuredWidth(e.nativeEvent.layout.width)}
       contentContainerStyle={{
         paddingTop: insets.top + sp.lg,
         paddingBottom: insets.bottom + sp.huge,
         paddingHorizontal: gutter,
         alignSelf: 'center',
-        width: contentWidth,
+        width: '100%',
+        maxWidth: 560,
       }}
       refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} tintColor={c.textMuted} />}
     >
+      <AppHeader />
+
       {/* ---------------------------------------------------- 1. Can I spend? */}
       <Text style={[t.caption, { color: c.textMuted }]}>
         {range.label} · {daysLeft} day{daysLeft === 1 ? '' : 's'} left

@@ -68,7 +68,10 @@ export default function InsightsScreen() {
         paddingBottom: insets.bottom + 80,
         paddingHorizontal: sp.lg,
         alignSelf: 'center',
-        width: Math.min(width, 560),
+        // '100%' + maxWidth respects the parent; Math.min(window, 560) did not,
+        // so on a phone the content overflowed under the nav rail.
+        width: '100%',
+        maxWidth: 560,
       }}
     >
       <Text style={[t.title, { color: c.textPrimary }]}>Insights</Text>

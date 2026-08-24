@@ -7,7 +7,6 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-// @ts-expect-error — plain JS worker, no types, deliberately runtime-agnostic.
 import worker from '../server/llm-proxy/worker.js';
 
 const categories = [
