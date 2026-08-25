@@ -16,6 +16,9 @@ import {
   type AnalyticsContext,
 } from '../../src/core/analytics';
 import { periodRange, today } from '../../src/core/dates';
+import { router } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { Pressable } from 'react-native';
 import { useAppStore } from '../../src/store/useAppStore';
 
 /**
@@ -74,7 +77,28 @@ export default function InsightsScreen() {
         maxWidth: 560,
       }}
     >
-      <Text style={[t.title, { color: c.textPrimary }]}>Insights</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+        <Text style={[t.title, { color: c.textPrimary }]}>Insights</Text>
+        <Pressable
+          onPress={() => router.push('/reports')}
+          accessibilityRole="button"
+          accessibilityLabel="Export a report"
+          hitSlop={10}
+          style={({ pressed }) => ({
+            flexDirection: 'row',
+            alignItems: 'center',
+            paddingHorizontal: sp.md,
+            paddingVertical: sp.sm,
+            borderRadius: 999,
+            backgroundColor: pressed ? c.accentSubtle : c.surface,
+            borderWidth: 0.5,
+            borderColor: c.border,
+          })}
+        >
+          <Ionicons name="download-outline" size={15} color={c.accent} />
+          <Text style={[t.caption, { color: c.accent, marginLeft: 6 }]}>Export</Text>
+        </Pressable>
+      </View>
 
       <View style={{ flexDirection: 'row', marginTop: sp.lg }}>
         <Stat

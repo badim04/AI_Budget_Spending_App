@@ -34,6 +34,7 @@ import {
   requestPermission,
   scheduleBudgetAlerts,
 } from '../../src/lib/notifications';
+import { openAppSettings } from '../../src/lib/permissions';
 import { allBudgetStatuses } from '../../src/core/budget';
 import { excludedCategoryIds } from '../../src/core/analytics';
 
@@ -212,7 +213,7 @@ export default function SettingsScreen() {
           <TextInput
             value={newAccountName}
             onChangeText={setNewAccountName}
-            placeholder="New account name"
+            placeholder="e.g. GTBank current, Opay wallet, Cash"
             placeholderTextColor={c.textMuted}
             onSubmitEditing={addAccount}
             style={[t.body, { color: c.textPrimary, flex: 1, paddingVertical: sp.sm }]}
@@ -350,6 +351,21 @@ export default function SettingsScreen() {
                   'One notification at 7pm, only when an envelope is over or running ahead of pace.'
           }
         />
+        {NOTIFICATIONS_SUPPORTED && alertState === 'denied' ? (
+          <View style={{ marginTop: sp.lg }}>
+            <Button
+              label="Open device settings"
+              variant="secondary"
+              icon="⚙"
+              onPress={() => void openAppSettings()}
+            />
+            <Text style={[t.micro, { color: c.textMuted, marginTop: sp.sm }]}>
+              Android will not ask again once notifications are blocked, so this has to be
+              switched on in system settings. Finlo re-checks when you come back.
+            </Text>
+          </View>
+        ) : null}
+
         {NOTIFICATIONS_SUPPORTED && alertState !== 'denied' ? (
           <View style={{ marginTop: sp.lg }}>
             <Button

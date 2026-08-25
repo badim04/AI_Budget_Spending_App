@@ -45,6 +45,7 @@ function Shell() {
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="transaction/new" options={{ presentation: 'modal' }} />
         <Stack.Screen name="review" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="reports" options={{ presentation: 'modal' }} />
         <Stack.Screen name="import" options={{ presentation: 'modal' }} />
       </Stack>
 
