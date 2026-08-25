@@ -200,8 +200,22 @@ export function parseStatement(
   text: string,
   opts: { currency: CurrencyCode; today?: string }
 ): ParsedStatement {
+  return parseStatementGrid(parseCsv(text), opts);
+}
+
+/**
+ * Parse an already-tabulated statement.
+ *
+ * PDF and Excel arrive as rows rather than delimited text, so they enter here
+ * instead of going through the CSV splitter. Everything downstream — header
+ * detection, column mapping, row parsing — is shared, so a PDF import and a CSV
+ * import of the same statement produce the same transactions.
+ */
+export function parseStatementGrid(
+  grid: string[][],
+  opts: { currency: CurrencyCode; today?: string }
+): ParsedStatement {
   const problems: StatementProblem[] = [];
-  const grid = parseCsv(text);
 
   if (grid.length === 0) {
     return blank(opts.currency, problems, 'The file is empty');

@@ -26,8 +26,9 @@ import { formatDate, nowISO, today } from '../src/core/dates';
 import { categorise, prettyMerchant } from '../src/core/categorize';
 import { dedupeKey } from '../src/db/schema';
 import { classifyWithLlm, cappedConfidence, llmStatus } from '../src/ingest/llm';
+import { PICKER_MIME_TYPES, readStatement, type StatementFormat } from '../src/ingest/statement/sources';
 import {
-  parseStatement,
+  parseStatementGrid,
   summarise,
   withinRange,
   type ParsedStatement,
@@ -45,6 +46,32 @@ interface Staged {
   categoryId?: string;
   reason: string;
   duplicate: boolean;
+}
+
+
+/**
+ * Base64 -> bytes.
+ *
+ * expo-file-system can only hand back a string, so a binary statement arrives
+ * base64-encoded and has to be decoded before the PDF or XLSX reader sees it.
+ */
+function base64ToBytes(b64: string): Uint8Array {
+  const clean = b64.replace(/[^A-Za-z0-9+/=]/g, '');
+  const CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  const len = clean.endsWith('==') ? 2 : clean.endsWith('=') ? 1 : 0;
+  const out = new Uint8Array((clean.length / 4) * 3 - len);
+  let p = 0;
+  for (let i = 0; i < clean.length; i += 4) {
+    const n =
+      (CHARS.indexOf(clean[i]) << 18) |
+      (CHARS.indexOf(clean[i + 1]) << 12) |
+      ((CHARS.indexOf(clean[i + 2]) & 63) << 6) |
+      (CHARS.indexOf(clean[i + 3]) & 63);
+    if (p < out.length) out[p++] = (n >> 16) & 255;
+    if (p < out.length) out[p++] = (n >> 8) & 255;
+    if (p < out.length) out[p++] = n & 255;
+  }
+  return out;
 }
 
 export default function ImportScreen() {
@@ -67,6 +94,8 @@ export default function ImportScreen() {
   const [busy, setBusy] = useState(false);
   const [saving, setSaving] = useState(false);
   const [usedLlm, setUsedLlm] = useState(0);
+  const [sourceFormat, setSourceFormat] = useState<StatementFormat | null>(null);
+  const [sourceSections, setSourceSections] = useState<string[]>([]);
 
   const account = accounts.find((a) => a.id === accountId);
   const currency = account?.currency ?? settings.display_currency ?? 'NGN';
@@ -85,23 +114,45 @@ export default function ImportScreen() {
     setBusy(true);
     try {
       const res = await DocumentPicker.getDocumentAsync({
-        type: ['text/csv', 'text/comma-separated-values', 'text/plain', 'application/vnd.ms-excel', '*/*'],
+        type: [...PICKER_MIME_TYPES, '*/*'],
         copyToCacheDirectory: true,
       });
       if (res.canceled || !res.assets?.[0]) return;
 
       const asset = res.assets[0];
-      setFileName(asset.name ?? 'statement.csv');
+      const name = asset.name ?? 'statement';
+      setFileName(name);
 
-      const text =
+      // Read as BYTES, not text: a PDF and an .xlsx are binary, and decoding
+      // them as UTF-8 destroys them before the parser ever sees them.
+      const bytes =
         Platform.OS === 'web'
-          ? await fetch(asset.uri).then((x) => x.text())
-          : await FileSystem.readAsStringAsync(asset.uri, {
-              encoding: FileSystem.EncodingType.UTF8,
-            });
+          ? new Uint8Array((await fetch(asset.uri).then((x) => x.arrayBuffer())) as ArrayBuffer)
+          : base64ToBytes(
+              await FileSystem.readAsStringAsync(asset.uri, {
+                encoding: FileSystem.EncodingType.Base64,
+              })
+            );
 
-      const result = parseStatement(text, { currency, today: today() });
+      const source = readStatement(bytes, name);
+
+      if (source.encrypted) {
+        notify(
+          'This PDF is password protected',
+          source.warning ??
+            'Open it once with the password and re-save an unlocked copy, then import that.'
+        );
+        return;
+      }
+      if (source.rows.length === 0) {
+        notify('Could not read that file', source.warning ?? 'No readable rows found.');
+        return;
+      }
+
+      const result = parseStatementGrid(source.rows, { currency, today: today() });
       setParsed(result);
+      setSourceFormat(source.format);
+      setSourceSections(source.sections);
       setFrom(result.from ?? '');
       setTo(result.to ?? '');
       setUsedLlm(0);
@@ -110,7 +161,7 @@ export default function ImportScreen() {
         notify(
           'Could not read that file',
           result.problems[0]?.reason ??
-            'Export a CSV with date, description and amount columns.'
+            'The file was read but no date/description/amount columns were found.'
         );
       }
     } catch (e) {
@@ -291,11 +342,18 @@ export default function ImportScreen() {
       {/* 2. file */}
       <View style={{ marginTop: sp.lg }}>
         <Button
-          label={busy ? 'Working…' : parsed ? `Replace file (${fileName})` : 'Choose CSV file'}
+          label={busy ? 'Working…' : parsed ? `Replace file (${fileName})` : 'Choose a statement file'}
           variant={parsed ? 'secondary' : 'primary'}
           icon="📄"
           onPress={pickFile}
         />
+
+        {sourceFormat ? (
+          <Text style={[t.micro, { color: c.textMuted, marginTop: sp.sm }]}>
+            Read as {sourceFormat.toUpperCase()}
+            {sourceSections.length ? ` · ${sourceSections.join(', ')}` : ''}
+          </Text>
+        ) : null}
       </View>
 
       {parsed && parsed.rows.length > 0 ? (
