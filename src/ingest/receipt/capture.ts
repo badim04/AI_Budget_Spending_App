@@ -50,6 +50,34 @@ export class CancelledError extends Error {
 
 // ------------------------------------------------------------------ picking
 
+/**
+ * Pick one or many images.
+ *
+ * `limit` above 1 turns on multi-select in the OS picker. The camera can only
+ * produce one shot per launch, so a batch from the camera is the caller looping
+ * — which is also the better interaction: shoot, confirm, shoot again.
+ */
+export async function pickImages(
+  source: CaptureSource,
+  limit: number
+): Promise<ImagePicker.ImagePickerAsset[]> {
+  if (source === 'camera' || limit <= 1) return [await pickImage(source)];
+
+  const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+  if (!permission.granted) throw new PermissionDeniedError('Photo library');
+
+  const result = await ImagePicker.launchImageLibraryAsync({
+    mediaTypes: ['images'],
+    quality: 1,
+    exif: false,
+    allowsMultipleSelection: true,
+    selectionLimit: limit,
+    orderedSelection: true,
+  });
+  if (result.canceled || !result.assets?.length) throw new CancelledError();
+  return result.assets;
+}
+
 async function pickImage(source: CaptureSource): Promise<ImagePicker.ImagePickerAsset> {
   if (source === 'camera') {
     // Web has no camera through this API; the file picker is the correct
@@ -138,6 +166,19 @@ export async function captureReceipt(
   opts: { defaultCurrency: CurrencyCode; id: string }
 ): Promise<CaptureOutcome> {
   const asset = await pickImage(source);
+  return processAsset(asset, opts);
+}
+
+/**
+ * Store, read and parse one already-picked image.
+ *
+ * Split out so a batch does not re-open the picker per receipt, and so a single
+ * failure inside a batch is contained to that one receipt.
+ */
+export async function processAsset(
+  asset: { uri: string },
+  opts: { defaultCurrency: CurrencyCode; id: string }
+): Promise<CaptureOutcome> {
   const small = await downscale(asset.uri, MAX_EDGE, JPEG_QUALITY);
   const { fileUri, byteSize } = await storeImage(small.uri, small.base64, opts.id);
   const stamp = nowISO();
@@ -193,4 +234,63 @@ export async function captureReceipt(
     parsed,
     ocrNote: parsed.warnings.length ? parsed.warnings.join(' · ') : null,
   };
+}
+
+
+// ------------------------------------------------------------------- batch
+
+export interface BatchProgress {
+  done: number;
+  total: number;
+  /** The receipt just finished, or null while the first one is still running. */
+  last: CaptureOutcome | null;
+}
+
+export interface BatchResult {
+  outcomes: CaptureOutcome[];
+  /** One entry per image that could not be processed at all. */
+  failures: Array<{ index: number; reason: string }>;
+}
+
+/**
+ * Capture several receipts in one go.
+ *
+ * Processed strictly one at a time rather than with Promise.all: each image is
+ * downscaled and then sent to an OCR service, and firing twenty of those
+ * concurrently is how you hit a rate limit and lose the whole batch. Sequential
+ * is slower and finishes.
+ *
+ * A failure never aborts the run — the other receipts are still worth having,
+ * and the failures come back for the caller to report.
+ */
+export async function captureReceipts(
+  source: CaptureSource,
+  opts: {
+    defaultCurrency: CurrencyCode;
+    limit?: number;
+    idFor: (index: number) => string;
+    onProgress?: (p: BatchProgress) => void;
+  }
+): Promise<BatchResult> {
+  const assets = await pickImages(source, opts.limit ?? 20);
+  const outcomes: CaptureOutcome[] = [];
+  const failures: Array<{ index: number; reason: string }> = [];
+
+  opts.onProgress?.({ done: 0, total: assets.length, last: null });
+
+  for (let i = 0; i < assets.length; i++) {
+    try {
+      const outcome = await processAsset(assets[i], {
+        defaultCurrency: opts.defaultCurrency,
+        id: opts.idFor(i),
+      });
+      outcomes.push(outcome);
+      opts.onProgress?.({ done: i + 1, total: assets.length, last: outcome });
+    } catch (e) {
+      failures.push({ index: i, reason: e instanceof Error ? e.message : String(e) });
+      opts.onProgress?.({ done: i + 1, total: assets.length, last: null });
+    }
+  }
+
+  return { outcomes, failures };
 }

@@ -19,8 +19,10 @@ import {
   CancelledError,
   PermissionDeniedError,
   captureReceipt,
+  captureReceipts,
   type CaptureSource,
 } from '../../src/ingest/receipt/capture';
+import { putBatch, type PendingReceipt } from '../../src/ingest/receipt/batchStore';
 import { ocrStatus } from '../../src/ingest/receipt/ocr';
 import { gmailConfigured, isConnected } from '../../src/ingest/email/gmail';
 import { currencyMeta } from '../../src/core/money';
@@ -47,6 +49,7 @@ export default function CaptureScreen() {
   const saveReceipt = useAppStore((s) => s.saveReceipt);
 
   const [busy, setBusy] = useState<CaptureSource | null>(null);
+  const [batchBusy, setBatchBusy] = useState<{ done: number; total: number } | null>(null);
   const [gmailReady, setGmailReady] = useState<boolean | null>(null);
 
   const currency = settings.display_currency ?? 'NGN';
@@ -101,6 +104,61 @@ export default function CaptureScreen() {
     [accounts.length, currency, saveReceipt]
   );
 
+  const runBatch = useCallback(async () => {
+    if (accounts.length === 0) {
+      notify('Add an account first', 'Settings › Accounts, so there is somewhere to file them.');
+      return;
+    }
+    setBatchBusy({ done: 0, total: 0 });
+    try {
+      const stamp = Date.now().toString(36);
+      const result = await captureReceipts('library', {
+        defaultCurrency: currency,
+        limit: 20,
+        idFor: (i) => `rcpt_${stamp}_${i}`,
+        onProgress: (p) => setBatchBusy({ done: p.done, total: p.total }),
+      });
+
+      // Save every image first. Even a receipt whose amount could not be read is
+      // worth keeping — it stays attached and searchable.
+      const pending: PendingReceipt[] = [];
+      for (const outcome of result.outcomes) {
+        await saveReceipt(outcome.receipt);
+        pending.push({
+          receiptId: outcome.receipt.id,
+          fileUri: outcome.receipt.fileUri,
+          merchant: outcome.receipt.merchant ?? null,
+          totalMinor: outcome.receipt.totalMinor ?? null,
+          date: outcome.receipt.date ?? null,
+          currency: outcome.receipt.currency ?? currency,
+          note: outcome.ocrNote,
+        });
+      }
+
+      if (pending.length === 0) {
+        notify('Nothing captured', result.failures[0]?.reason ?? 'No images were readable.');
+        return;
+      }
+      if (result.failures.length > 0) {
+        notify(
+          `${result.failures.length} image${result.failures.length === 1 ? '' : 's'} skipped`,
+          'The rest are ready to review.'
+        );
+      }
+
+      router.push({ pathname: '/receipts', params: { token: putBatch(pending) } });
+    } catch (e) {
+      if (e instanceof CancelledError) return;
+      if (e instanceof PermissionDeniedError) {
+        notify('Permission needed', `${e.message}. Enable it in your device settings.`);
+        return;
+      }
+      notify('Could not capture', e instanceof Error ? e.message : String(e));
+    } finally {
+      setBatchBusy(null);
+    }
+  }, [accounts.length, currency, saveReceipt]);
+
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: c.canvas }}
@@ -139,6 +197,22 @@ export default function CaptureScreen() {
         action="Choose image"
         busy={busy === 'library'}
         onPress={() => runCapture('library')}
+      />
+
+      <Method
+        icon="albums-outline"
+        title="Scan several at once"
+        body="Select up to 20 receipts. Each one is read, then you confirm the whole batch on one screen before anything is saved."
+        badge={{ label: 'Batch', tone: 'accent' as const }}
+        action={
+          batchBusy
+            ? batchBusy.total > 0
+              ? `Reading ${batchBusy.done} of ${batchBusy.total}…`
+              : 'Opening picker…'
+            : 'Choose receipts'
+        }
+        busy={!!batchBusy}
+        onPress={() => void runBatch()}
       />
 
       <Method
