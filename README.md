@@ -12,7 +12,7 @@ and import from Gmail, with data persisted on device. See
 
 ```bash
 npm install
-npm test                    # 256 tests, no device or emulator needed
+npm test                    # 347 tests, no device or emulator needed
 npm run web                 # in a browser at localhost:8081
 npm start                   # QR code -> Expo Go on your phone
 
@@ -100,12 +100,15 @@ search — "which receipt had the router on it?" works.
 | **Gmail OAuth + fetch + import review** | `src/ingest/email/gmail.ts`, `app/review.tsx` | — |
 | **Settings** — currency, accounts, demo data, reset | `app/(tabs)/settings.tsx` | — |
 | **Recurring-rule detection** | `src/core/recurring.ts` | 21 |
-| **Bank statement import (CSV)** | `src/ingest/statement/parse.ts` | 24 |
 | **AI categorisation fallback (Gemini)** | `src/ingest/llm.ts` | 13 |
 | **Budget alert notifications** | `src/lib/notifications.ts`, `src/core/alerts.ts` | — |
 | **Goals** | `app/(tabs)/goals.tsx` | — |
-| Side navigation rail, 7 sections, responsive | `src/components/ui/SideNav.tsx` | — |
-| Design system, charts, 6 screens | `src/theme`, `src/components`, `app/` | — |
+| Navigation — bottom bar on phones, side rail >=600pt | `app/(tabs)/_layout.tsx`, `src/components/ui/SideNav.tsx` | — |
+| **Batch receipt capture** (up to 20) | `src/ingest/receipt/capture.ts`, `app/receipts.tsx` | — |
+| **Statement import** — PDF, Excel, CSV, TXT | `src/ingest/statement/*` | 24 |
+| **Report export** — PDF, Excel, CSV | `src/reports/*`, `app/reports.tsx` | 18 |
+| **Permissions** — request, and deep-link when blocked | `src/lib/permissions.ts` | — |
+| Design system, charts, 14 screens | `src/theme`, `src/components`, `app/` | — |
 
 `src/core`, `src/db/schema.ts`, `src/db/seed.ts` and `src/ingest` typecheck clean
 under `--strict` and import no React Native, which is why they run in plain Node.
@@ -124,8 +127,11 @@ Fully wired; they switch on when the key is present. Step-by-step:
 
 ### Not built
 
-- **Bank feeds** (Mono/Okra/Plaid) — deferred to v2. CSV statement import covers
-  the same ground with no provider account and no server.
+- **Accounts / login** — no auth at all yet. Open decision: device lock
+  (PIN + biometric, no server) vs real accounts (email codes, backend, sync).
+- **Bank feeds** (Mono/Okra/Plaid) — deferred to v2. Statement import covers the
+  same ground with no provider account and no server.
+- **PowerPoint export** — deferred; PDF, Excel and CSV are built.
 - **Editing a detected recurring rule** — add and delete work; editing does not.
 
 ---
