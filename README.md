@@ -23,6 +23,8 @@ npm run push -- "message"   # ship a JS update to everyone, no reinstall
 **Shipping to testers, and where to get the optional API keys:
 [docs/SHIPPING.md](docs/SHIPPING.md).**
 
+**Picking this up in a new session? Start at [docs/HANDOFF.md](docs/HANDOFF.md).**
+
 First run is empty; **Settings → Load demo data** fills it with eight months of
 generated history so the charts and forecasts have something to show. `npx expo-doctor` passes 18/18, and `npx expo export
 --platform web` builds all 19 routes with no warnings.
