@@ -32,7 +32,7 @@ const slugToCategoryId = new Map<string, string>([
 function deps(over: Partial<CategoriseDeps> = {}): CategoriseDeps {
   return {
     rules: [],
-    history: { counts: new Map() },
+    history: { counts: new Map(), notes: new Map() },
     categories,
     slugToCategoryId,
     ...over,
@@ -315,5 +315,54 @@ describe('suggestRuleFromCorrection', () => {
   it('does not offer a rule after a single correction', () => {
     const history = buildMerchantHistory([tx({ rawDescription: 'ONCE', categoryId: 'c_eating' })]);
     expect(suggestRuleFromCorrection('ONCE', 'c_eating', history)).toBeNull();
+  });
+});
+
+describe('Nigerian statement descriptors', () => {
+  /**
+   * Straight out of a real OPay export. Betting in particular is a large and
+   * very recognisable slice of a Nigerian statement, and every one of these
+   * rows was landing in the review queue — which is a good part of why one
+   * import asked for 162 decisions.
+   */
+  const localCategories: Category[] = [
+    ...categories,
+    { id: 'c_fun', name: 'Entertainment', kind: 'expense', icon: '🎬', color: '#f0f', excludeFromTotals: false, sortOrder: 6, archived: false, isSystem: true },
+    { id: 'c_airtime', name: 'Airtime & data', kind: 'expense', icon: '📱', color: '#ff0', excludeFromTotals: false, sortOrder: 7, archived: false, isSystem: true },
+    { id: 'c_fees', name: 'Fees & charges', kind: 'expense', icon: '🏦', color: '#999', excludeFromTotals: false, sortOrder: 8, archived: false, isSystem: true },
+    { id: 'c_shopping', name: 'Shopping', kind: 'expense', icon: '🛍️', color: '#f66', excludeFromTotals: false, sortOrder: 9, archived: false, isSystem: true },
+  ];
+
+  const localDeps = deps({
+    categories: localCategories,
+    slugToCategoryId: new Map([
+      ...slugToCategoryId,
+      ['entertainment', 'c_fun'],
+      ['airtime_data', 'c_airtime'],
+      ['fees_charges', 'c_fees'],
+      ['shopping', 'c_shopping'],
+    ]),
+  });
+
+  const cases: Array<[string, string]> = [
+    ['OPay Card Payment | SportyBet', 'c_fun'],
+    ['Mobile Data | 7046464337 | MTN | 3.2GB 2 Days Plan', 'c_airtime'],
+    ['Airtime | 8035304948 | MTN', 'c_airtime'],
+    ['Stamp Duty', 'c_fees'],
+    ['Third-Party Merchant Order | Jumia', 'c_shopping'],
+  ];
+
+  it.each(cases)('files %s', (description, expected) => {
+    const suggestion = categorise(
+      {
+        merchant: description,
+        rawDescription: description,
+        amountMinor: -100000,
+        accountId: 'acc_1',
+        isInflow: false,
+      },
+      localDeps
+    );
+    expect(suggestion?.categoryId, description).toBe(expected);
   });
 });

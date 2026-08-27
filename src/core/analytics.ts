@@ -9,6 +9,7 @@
  * median, or against the same month last year is where the meaning is.
  */
 
+import { isFiled } from './categorize';
 import {
   FxTable,
   add,
@@ -176,6 +177,29 @@ function accumulateByCategory(
 
 export const UNCATEGORISED = '__uncategorised__';
 
+/**
+ * Does a transaction belong to a selection of categories taken from a chart?
+ *
+ * "Uncategorised" is two different things and that is the trap. A transaction
+ * with no `categoryId` is bucketed here under the `__uncategorised__`
+ * sentinel, which is not a row in the categories table — while the seeded
+ * catch-all category is a real row with the id `cat_uncategorised`. Tapping
+ * the Uncategorised bar handed over the sentinel, the transactions list
+ * matched on the real id, and 19 transactions rendered as an empty screen.
+ *
+ * Either spelling means "not filed", and both match.
+ */
+export function matchesCategorySelection(
+  categoryId: ID | null | undefined,
+  selection: readonly string[]
+): boolean {
+  if (selection.length === 0) return true;
+  if (categoryId != null && selection.includes(categoryId)) return true;
+
+  const wantsUnfiled = selection.some((id) => id === UNCATEGORISED || !isFiled(id));
+  return wantsUnfiled && !isFiled(categoryId);
+}
+
 function countFor(
   range: PeriodRange,
   ctx: AnalyticsContext,
@@ -236,6 +260,7 @@ export function withOtherBucket(
       transactionCount: tail.reduce((a, r) => a + r.transactionCount, 0),
       share: tail.reduce((a, r) => a + r.share, 0),
       changeVsPrevious: null,
+      memberIds: tail.map((r) => r.categoryId),
     },
   ];
 }
@@ -545,6 +570,97 @@ export function yearOverYear(
   const current = totalSpend(range, ctx);
   const priorYear = totalSpend(priorRange, ctx);
   return { current, priorYear, change: ratio(subtract(current, priorYear), priorYear) };
+}
+
+/** One category's movement between two periods. */
+export interface CategoryDelta {
+  categoryId: ID;
+  categoryName: string;
+  icon: string;
+  color: string;
+  current: Money;
+  previous: Money;
+  /** Signed minor units: positive means more was spent this time. */
+  deltaMinor: number;
+  /** Fraction, or null when there is nothing to divide by. */
+  change: number | null;
+}
+
+export interface PeriodComparison {
+  current: Money;
+  previous: Money;
+  deltaMinor: number;
+  change: number | null;
+  /** Biggest movers first, by absolute change. */
+  categories: CategoryDelta[];
+}
+
+/**
+ * Two periods, side by side.
+ *
+ * Generalises `yearOverYear`, which could only ever answer one question. The
+ * ranges are given rather than derived so the caller can compare last month,
+ * the same month last year, or two dates somebody picked by hand — and so the
+ * partial-month problem stays where it belongs, with `elapsedRange` and
+ * `matchingSlice` in `periods.ts`.
+ *
+ * Categories are ranked by absolute movement, because "what changed" is the
+ * question, and a category that fell by ₦40,000 is exactly as interesting as
+ * one that rose by ₦40,000.
+ */
+export function comparePeriods(
+  current: PeriodRange,
+  previous: PeriodRange,
+  ctx: AnalyticsContext,
+  kind: 'expense' | 'income' = 'expense'
+): PeriodComparison {
+  const nowRows = categoryTotals(current, ctx, kind);
+  const thenRows = categoryTotals(previous, ctx, kind);
+
+  const nowTotal = sum(nowRows.map((r) => r.total), ctx.displayCurrency);
+  const thenTotal = sum(thenRows.map((r) => r.total), ctx.displayCurrency);
+
+  const byId = new Map<ID, CategoryDelta>();
+  const put = (row: CategoryTotal, side: 'current' | 'previous') => {
+    const existing = byId.get(row.categoryId);
+    if (existing) {
+      existing[side] = row.total;
+      return;
+    }
+    byId.set(row.categoryId, {
+      categoryId: row.categoryId,
+      categoryName: row.categoryName,
+      icon: row.icon,
+      color: row.color,
+      current: side === 'current' ? row.total : money(0, ctx.displayCurrency),
+      previous: side === 'previous' ? row.total : money(0, ctx.displayCurrency),
+      deltaMinor: 0,
+      change: null,
+    });
+  };
+
+  for (const row of nowRows) put(row, 'current');
+  for (const row of thenRows) put(row, 'previous');
+
+  const categories = [...byId.values()].map((d) => {
+    const deltaMinor = d.current.minor - d.previous.minor;
+    return {
+      ...d,
+      deltaMinor,
+      // No prior spend means "new", not "up infinity percent".
+      change: d.previous.minor === 0 ? null : deltaMinor / d.previous.minor,
+    };
+  });
+
+  categories.sort((a, b) => Math.abs(b.deltaMinor) - Math.abs(a.deltaMinor));
+
+  return {
+    current: nowTotal,
+    previous: thenTotal,
+    deltaMinor: nowTotal.minor - thenTotal.minor,
+    change: thenTotal.minor === 0 ? null : (nowTotal.minor - thenTotal.minor) / thenTotal.minor,
+    categories,
+  };
 }
 
 export function totalSpend(range: PeriodRange, ctx: AnalyticsContext): Money {

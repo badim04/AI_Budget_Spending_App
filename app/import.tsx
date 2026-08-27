@@ -23,9 +23,11 @@ import { AmountText, Button, Card, Pill } from '../src/components/ui/Primitives'
 import { useAppStore } from '../src/store/useAppStore';
 import { formatMoney, money } from '../src/core/money';
 import { formatDate, nowISO, today } from '../src/core/dates';
-import { categorise, prettyMerchant } from '../src/core/categorize';
+import { categorise, prettyMerchant, shouldAutoApply } from '../src/core/categorize';
 import { dedupeKey } from '../src/db/schema';
-import { classifyWithLlm, cappedConfidence, llmStatus } from '../src/ingest/llm';
+import { countKeys, markDuplicates } from '../src/core/dedupe';
+import { detectInternal, explainInternal, resolveInternalCategory } from '../src/core/internalTransfer';
+import { classifyWithLlmDetailed, cappedConfidence, llmStatus } from '../src/ingest/llm';
 import { PICKER_MIME_TYPES, readStatement, type StatementFormat } from '../src/ingest/statement/sources';
 import {
   parseStatementGrid,
@@ -46,6 +48,10 @@ interface Staged {
   categoryId?: string;
   reason: string;
   duplicate: boolean;
+  /** Confident enough to file without asking — see `shouldAutoApply`. */
+  settled: boolean;
+  /** A move between the user's own pots, or interest earned in one. */
+  internal: boolean;
 }
 
 
@@ -83,6 +89,12 @@ export default function ImportScreen() {
   const categories = useAppStore((s) => s.categories);
   const transactions = useAppStore((s) => s.transactions);
   const settings = useAppStore((s) => s.settings);
+  /**
+   * Default on. Someone who does not use an autosave pot never sees a match,
+   * so it costs them nothing; someone who does gets a statement that reads
+   * like their actual spending instead of a round trip.
+   */
+  const ignoreInternal = settings.ignore_internal_transfers !== 'false';
   const categoriseDeps = useAppStore((s) => s.categoriseDeps);
   const commitStaged = useAppStore((s) => s.commitStaged);
 
@@ -94,15 +106,17 @@ export default function ImportScreen() {
   const [busy, setBusy] = useState(false);
   const [saving, setSaving] = useState(false);
   const [usedLlm, setUsedLlm] = useState(0);
+  const [llmProgress, setLlmProgress] = useState('');
   const [sourceFormat, setSourceFormat] = useState<StatementFormat | null>(null);
   const [sourceSections, setSourceSections] = useState<string[]>([]);
 
   const account = accounts.find((a) => a.id === accountId);
   const currency = account?.currency ?? settings.display_currency ?? 'NGN';
 
-  // Existing dedupe keys, so a re-import of an overlapping window is a no-op.
-  const existingKeys = useMemo(
-    () => new Set(transactions.filter((x) => !x.deletedAt).map((x) => x.dedupeKey)),
+  // How many of each key already exist, so a re-import of an overlapping window
+  // is a no-op *and* three identical stamp-duty charges still import as three.
+  const existingCounts = useMemo(
+    () => countKeys(transactions.filter((x) => !x.deletedAt).map((x) => x.dedupeKey)),
     [transactions]
   );
 
@@ -175,8 +189,32 @@ export default function ImportScreen() {
   const staged: Staged[] = useMemo(() => {
     if (!parsed || !accountId) return [];
     const deps = categoriseDeps();
-    return withinRange(parsed.rows, from || null, to || null).map((row) => {
-      const key = dedupeKey(accountId, row.date, row.amountMinor, parsed.currency);
+    const inWindow = withinRange(parsed.rows, from || null, to || null);
+    const duplicates = markDuplicates(
+      inWindow,
+      (row) => dedupeKey(accountId, row.date, row.amountMinor, parsed.currency),
+      existingCounts
+    );
+
+    return inWindow.map((row, index) => {
+      // Autosave sweeps first: a leg of an OWealth round trip is neither
+      // spending nor income, and asking about each one is pure noise.
+      const internal = ignoreInternal ? detectInternal(row.description) : null;
+      const internalCategoryId = internal
+        ? resolveInternalCategory(internal, categories)
+        : undefined;
+
+      if (internal && internalCategoryId) {
+        return {
+          row,
+          categoryId: internalCategoryId,
+          reason: explainInternal(internal),
+          duplicate: duplicates[index],
+          settled: true,
+          internal: true,
+        };
+      }
+
       const suggestion = categorise(
         {
           merchant: row.description,
@@ -191,14 +229,18 @@ export default function ImportScreen() {
         row,
         categoryId: suggestion?.categoryId,
         reason: suggestion?.reason ?? 'No match — will go to review',
-        duplicate: existingKeys.has(key),
+        duplicate: duplicates[index],
+        settled: shouldAutoApply(suggestion),
+        internal: false,
       };
     });
-  }, [parsed, from, to, accountId, categoriseDeps, existingKeys]);
+  }, [parsed, from, to, accountId, categoriseDeps, existingCounts, ignoreInternal, categories]);
 
   const fresh = staged.filter((s) => !s.duplicate);
   const duplicates = staged.length - fresh.length;
   const uncategorised = fresh.filter((s) => !s.categoryId).length;
+  const settled = fresh.filter((s) => s.settled).length;
+  const internalCount = fresh.filter((s) => s.internal).length;
   const totals = summarise(fresh.map((s) => s.row));
   const llm = llmStatus();
 
@@ -208,18 +250,31 @@ export default function ImportScreen() {
     if (unknown.length === 0) return;
     setBusy(true);
     try {
-      const answers = await classifyWithLlm(unknown, categories);
-      if (answers.length === 0) {
-        notify('No suggestions came back', 'Those rows will go to the review queue.');
+      const run = await classifyWithLlmDetailed(unknown, categories, {
+        onProgress: (done, total) => setLlmProgress(total > 1 ? `${done} of ${total}` : ''),
+      });
+      const filed = run.suggestions.filter((a) => a.categoryId);
+
+      if (filed.length === 0) {
+        // Say why. "No suggestions came back" with no reason cannot tell a dead
+        // connection from an exhausted quota from a reply that would not parse.
+        notify(
+          'No suggestions came back',
+          run.error ?? 'Those rows will go to the review queue.'
+        );
         return;
       }
-      const byDescriptor = new Map(answers.map((a) => [a.descriptor.toLowerCase(), a]));
+
+      const byDescriptor = new Map(run.suggestions.map((a) => [a.descriptor.toLowerCase(), a]));
       // Applied to the staged view only; nothing is written until confirm.
       setParsed((prev) => (prev ? { ...prev } : prev));
       llmApplied.current = byDescriptor;
-      setUsedLlm(answers.filter((a) => a.categoryId).length);
+      setUsedLlm(filed.length);
+
+      if (run.error) notify(`${filed.length} categorised`, run.error);
     } finally {
       setBusy(false);
+      setLlmProgress('');
     }
   }, [fresh, categories]);
 
@@ -249,9 +304,17 @@ export default function ImportScreen() {
           categoryId,
           source: 'csv_import',
           confidence: fromLlm ? 'low' : categoryId ? 'medium' : 'unreviewed',
-          // Everything from a statement is reviewable. A bank export is
-          // authoritative about amounts, never about categories.
-          reviewed: false,
+          /**
+           * Only the uncertain ones go to review.
+           *
+           * Everything used to arrive unreviewed on the principle that a bank
+           * export is authoritative about amounts and never about categories.
+           * True, but it meant a 162-row import asked for 162 confirmations,
+           * including the ones matched by an explicit rule the user wrote. Now
+           * a confident offline match arrives filed, and only genuine unknowns
+           * and model guesses queue up. Everything stays editable in Activity.
+           */
+          reviewed: s.settled && !fromLlm,
           tags: [],
           dedupeKey: dedupeKey(account.id, s.row.date, s.row.amountMinor, parsed.currency),
           pending: false,
@@ -378,6 +441,12 @@ export default function ImportScreen() {
               </Text>
               <View style={{ flexDirection: 'row' }}>
                 {duplicates > 0 ? <Pill label={`${duplicates} duplicate`} tone="neutral" /> : null}
+                {settled > 0 ? <Pill label={`${settled} auto-filed`} tone="good" /> : null}
+                {internalCount > 0 ? (
+                  <View style={{ marginLeft: sp.sm }}>
+                    <Pill label={`${internalCount} internal`} tone="neutral" />
+                  </View>
+                ) : null}
                 {uncategorised > 0 ? (
                   <View style={{ marginLeft: sp.sm }}>
                     <Pill label={`${uncategorised} to review`} tone="warning" />
@@ -397,6 +466,14 @@ export default function ImportScreen() {
               </View>
             </View>
 
+            {internalCount > 0 ? (
+              <Text style={[t.micro, { color: c.textMuted, marginTop: sp.md }]}>
+                {internalCount} row{internalCount === 1 ? '' : 's'} moved between your own
+                pots (autosave). Filed as transfers and left out of spending totals —
+                turn this off in Settings if you want the raw ledger.
+              </Text>
+            ) : null}
+
             {parsed.problems.length > 0 ? (
               <Text style={[t.micro, { color: c.warning, marginTop: sp.md }]}>
                 {parsed.problems.length} row{parsed.problems.length === 1 ? '' : 's'} skipped:{' '}
@@ -408,9 +485,11 @@ export default function ImportScreen() {
               <View style={{ marginTop: sp.lg }}>
                 <Button
                   label={
-                    usedLlm > 0
-                      ? `${usedLlm} categorised by ${llm.name}`
-                      : `Ask ${llm.name} about ${uncategorised} unknown`
+                    llmProgress
+                      ? `Asking ${llm.name}… ${llmProgress}`
+                      : usedLlm > 0
+                        ? `${usedLlm} categorised by ${llm.name}`
+                        : `Ask ${llm.name} about ${uncategorised} unknown`
                   }
                   variant="secondary"
                   onPress={runLlm}

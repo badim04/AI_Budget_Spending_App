@@ -23,8 +23,14 @@
  */
 
 import * as XLSX from 'xlsx';
+import { decodeText } from '../bytes';
 import { extractPdfText, isPdf } from '../pdf/extract';
-import { parseCsv } from './parse';
+import { tabulate } from '../pdf/table';
+import { detectColumns, looksLikeDate, parseCsv } from './parse';
+
+// Re-exported: callers reading a statement should not have to know that BOM
+// sniffing lives one directory up.
+export { decodeText };
 
 export type StatementFormat = 'csv' | 'xlsx' | 'pdf' | 'text' | 'unknown';
 
@@ -117,10 +123,29 @@ function readPdf(bytes: Uint8Array, password?: string): StatementSource {
     };
   }
 
+  const sections = [`${extracted.pageCount} page${extracted.pageCount === 1 ? '' : 's'}`];
+
+  // Geometry first. Reading order only as a fallback, because it cannot tell a
+  // wrapped description from a missing column — see `../pdf/table.ts`.
+  const table = tabulate(
+    extracted.items,
+    (cells) => detectColumns(cells) != null,
+    (cells) => cells.some((c) => looksLikeDate(c))
+  );
+
+  if (table) {
+    return {
+      format: 'pdf',
+      rows: [table.headers, ...table.rows],
+      sections,
+      encrypted: false,
+    };
+  }
+
   return {
     format: 'pdf',
     rows: stitchPdfRows(extracted.lines),
-    sections: [`${extracted.pageCount} page${extracted.pageCount === 1 ? '' : 's'}`],
+    sections,
     encrypted: false,
   };
 }
@@ -174,6 +199,7 @@ export function stitchPdfRows(lines: string[]): string[][] {
 function readSpreadsheet(bytes: Uint8Array): StatementSource {
   try {
     const book = XLSX.read(bytes, { type: 'array', cellDates: false, raw: false });
+    for (const name of book.SheetNames) repairRange(book.Sheets[name]);
     const rows: string[][] = [];
     const sections: string[] = [];
 
@@ -188,10 +214,15 @@ function readSpreadsheet(bytes: Uint8Array): StatementSource {
       });
       if (grid.length === 0) continue;
       sections.push(name);
-      // A sheet name is worth keeping: it is usually the account ("Wallet",
-      // "Savings") and helps the user see that both were read.
-      rows.push([`# ${name}`]);
-      for (const row of grid) rows.push(row.map((c) => String(c ?? '').trim()));
+
+      const cleaned = grid.map((row) => row.map((c) => String(c ?? '').trim()));
+
+      // Every sheet opens with account name, address and period totals before
+      // the table starts. Those are not failed transactions, so drop them here
+      // rather than reporting six "unreadable date" problems per workbook. The
+      // sheet name still reaches the user through `sections`.
+      const header = cleaned.findIndex((row) => detectColumns(row) != null);
+      for (const row of header === -1 ? cleaned : cleaned.slice(header)) rows.push(row);
     }
 
     if (rows.length === 0) {
@@ -222,18 +253,41 @@ function readDelimited(text: string): StatementSource {
   };
 }
 
-/** Decode bytes to text, honouring a BOM. Windows exports are often UTF-16. */
-export function decodeText(bytes: Uint8Array): string {
-  if (bytes.length >= 2) {
-    if (bytes[0] === 0xff && bytes[1] === 0xfe) {
-      return new TextDecoder('utf-16le').decode(bytes);
-    }
-    if (bytes[0] === 0xfe && bytes[1] === 0xff) {
-      return new TextDecoder('utf-16be').decode(bytes);
-    }
+/**
+ * Trust the cells, not the sheet's own idea of where they are.
+ *
+ * A sheet declares its used range in `!ref`, and exporters get it wrong. The
+ * OPay export used to build this declared `A10:H178` while its header row sat
+ * at A7 and two real transactions at A8 and A9 — so SheetJS handed back a grid
+ * with no header and two transactions missing, and the import failed with
+ * "Could not find a header row". Recomputing the range from the addressed
+ * cells costs nothing and fixes it.
+ */
+function repairRange(sheet: XLSX.WorkSheet | undefined): void {
+  if (!sheet) return;
+
+  const addresses = Object.keys(sheet).filter((k) => !k.startsWith('!'));
+  if (addresses.length === 0) return;
+
+  let minR = Infinity;
+  let minC = Infinity;
+  let maxR = -Infinity;
+  let maxC = -Infinity;
+
+  for (const address of addresses) {
+    const { r, c } = XLSX.utils.decode_cell(address);
+    if (r < minR) minR = r;
+    if (c < minC) minC = c;
+    if (r > maxR) maxR = r;
+    if (c > maxC) maxC = c;
   }
-  const text = new TextDecoder('utf-8').decode(bytes);
-  return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+
+  if (!Number.isFinite(minR) || !Number.isFinite(minC)) return;
+
+  sheet['!ref'] = XLSX.utils.encode_range({
+    s: { r: minR, c: minC },
+    e: { r: maxR, c: maxC },
+  });
 }
 
 function looksLikeZip(bytes: Uint8Array): boolean {

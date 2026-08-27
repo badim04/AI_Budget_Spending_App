@@ -6,6 +6,9 @@
   "description": "Multi-currency budget and spending tracker for Android, iOS and web, with receipt/email auto-capture and forecasting.",
   "scripts": {
     "start": "expo start",
+    "dev": "expo start --dev-client",
+    "dev:tunnel": "expo start --dev-client --tunnel",
+    "dev:usb": "adb reverse tcp:8081 tcp:8081 && expo start --dev-client",
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
@@ -15,12 +18,15 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --ext .ts,.tsx",
     "apk": "eas build --profile preview --platform android",
+    "apk:dev": "eas build --profile development --platform android",
     "apk:local": "eas build --profile preview --platform android --local",
     "ios:build": "eas build --profile preview --platform ios",
-    "push": "eas update --branch preview --message",
-    "push:prod": "eas update --branch production --message",
+    "push": "node scripts/push.mjs",
+    "push:check": "node scripts/push.mjs --check",
+    "push:prod": "node scripts/push.mjs --branch production",
     "release": "eas build --profile production --platform android",
-    "doctor": "expo-doctor"
+    "doctor": "expo-doctor",
+    "logcat": "adb logcat -s ReactNativeJS:V ReactNative:V AndroidRuntime:E ExpoModulesCore:V"
   },
   "dependencies": {
     "@babel/runtime": "^8.0.0",
@@ -31,6 +37,7 @@
     "expo-auth-session": "~6.0.0",
     "expo-constants": "~17.0.0",
     "expo-crypto": "~14.0.0",
+    "expo-dev-client": "~5.0.20",
     "expo-document-picker": "~13.0.3",
     "expo-file-system": "~18.0.0",
     "expo-font": "~13.0.4",

@@ -14,13 +14,21 @@ import { describe, it, expect } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
 import { extractPdfText, isPdf, parseCMap } from '@/ingest/pdf/extract';
 import { readStatement, stitchPdfRows, decodeText, formatFromName } from '@/ingest/statement/sources';
+import { parseStatementGrid, summarise } from '@/ingest/statement/parse';
 
-const DOWNLOADS = 'C:/Users/user/Downloads';
-const PDF = `${DOWNLOADS}/ABDULAKEEM OLADIMEJI ADEBAYO_8102579422_20260825195637.pdf`;
-const XLSX_FILE = `${DOWNLOADS}/ABDULAKEEM OLADIMEJI ADEBAYO_8102579422_20260825200613.xlsx`;
+/** Fixed so the relative-date fallback cannot drift with the wall clock. */
+const TODAY = '2026-08-26';
 
-const hasPdf = existsSync(PDF);
-const hasXlsx = existsSync(XLSX_FILE);
+import { HAS_STATEMENTS, STATEMENT_PDF, STATEMENT_XLSX, describeMissingFixtures } from './fixtures';
+
+const PDF = STATEMENT_PDF ?? '';
+const XLSX_FILE = STATEMENT_XLSX ?? '';
+
+const hasPdf = STATEMENT_PDF != null;
+const hasXlsx = STATEMENT_XLSX != null;
+
+// A skipped test still prints as a pass. Say so instead.
+if (!HAS_STATEMENTS) console.warn(describeMissingFixtures());
 const bytesOf = (p: string) => new Uint8Array(readFileSync(p));
 
 describe('format detection', () => {
@@ -173,17 +181,88 @@ describe.skipIf(!hasXlsx)('real OPay XLSX statement', () => {
 });
 
 describe.skipIf(!hasPdf || !hasXlsx)('PDF and XLSX agree', () => {
-  it('find a comparable number of transactions for the same account', () => {
-    const fromPdf = readStatement(bytesOf(PDF), 's.pdf').rows.filter((r) =>
-      /^\d{1,2}\s+\w{3}\s+\d{4}/.test(r[0] ?? '')
-    ).length;
-    const fromXlsx = readStatement(bytesOf(XLSX_FILE), 's.xlsx').rows.filter((r) =>
-      /^\d{1,2}\s+\w{3}\s+\d{4}/.test(r[0] ?? '')
-    ).length;
+  /**
+   * The strongest check this repo has.
+   *
+   * The same account and the same period, exported twice by the same bank in
+   * two formats. One is structured and one has to be recovered from page
+   * geometry, so if both land on the same transactions, the hard path works.
+   *
+   * The bank prints its own totals in the file preamble, which makes them
+   * ground truth rather than a snapshot of whatever the parser happened to do:
+   *
+   *   Wallet   Total Debit 695,294.73 (126)   Total Credit 688,520.73 (45)
+   *   Savings  Total Debit      14.73 (2)     Total Credit       5.04
+   *
+   * Before the column-aware PDF reader, the PDF import produced 318,618.22 in
+   * and 608,681.12 out, and read a 15,000.00 transfer as 16,840.00 — it was
+   * picking up the running balance, because a wrapped description shifted
+   * every column after it left by one. Numbers that look plausible and are
+   * wrong are the worst failure this app can have, so it gets pinned down.
+   */
+  const WALLET_DEBIT = 69529473;
+  const WALLET_CREDIT = 68852073;
+  const SAVINGS_DEBIT = 1473;
+  const SAVINGS_CREDIT = 504;
 
-    // Same account and period exported twice: the counts should be close. They
-    // are not identical because the PDF paginates and repeats headers.
-    const ratio = Math.min(fromPdf, fromXlsx) / Math.max(fromPdf, fromXlsx);
-    expect(ratio, `pdf=${fromPdf} xlsx=${fromXlsx}`).toBeGreaterThan(0.8);
+  const parseFile = (path: string, name: string) => {
+    const source = readStatement(bytesOf(path), name);
+    return { source, parsed: parseStatementGrid(source.rows, { currency: 'NGN', today: TODAY }) };
+  };
+
+  it('the PDF matches the totals the bank printed on it', () => {
+    const { parsed } = parseFile(PDF, 's.pdf');
+    const totals = summarise(parsed.rows);
+
+    expect(parsed.problems).toEqual([]);
+    expect(totals.inflowMinor).toBe(WALLET_CREDIT);
+    expect(totals.outflowMinor).toBe(WALLET_DEBIT);
+    expect(parsed.rows.length).toBe(171); // 126 debits + 45 credits
+  });
+
+  it('the XLSX matches the totals for both of its sheets', () => {
+    const { parsed } = parseFile(XLSX_FILE, 's.xlsx');
+    const totals = summarise(parsed.rows);
+
+    expect(parsed.problems).toEqual([]);
+    expect(totals.inflowMinor).toBe(WALLET_CREDIT + SAVINGS_CREDIT);
+    expect(totals.outflowMinor).toBe(WALLET_DEBIT + SAVINGS_DEBIT);
+  });
+
+  it('every transaction in the PDF is in the XLSX, to the kobo', () => {
+    const { parsed: fromPdf } = parseFile(PDF, 's.pdf');
+    const { parsed: fromXlsx } = parseFile(XLSX_FILE, 's.xlsx');
+
+    const key = (r: { date: string; amountMinor: number }) => `${r.date}|${r.amountMinor}`;
+    const inXlsx = new Set(fromXlsx.rows.map(key));
+    const missing = fromPdf.rows.filter((r) => !inXlsx.has(key(r)));
+
+    expect(
+      missing.map((r) => `${r.date} ${r.amountMinor} ${r.description}`),
+      'transactions the PDF reader invented or misread'
+    ).toEqual([]);
+  });
+
+  it('reads the credit column, not the balance beside it', () => {
+    // The row that exposed the bug: a 15,000.00 transfer in, printed on a line
+    // whose running balance was 16,840.00.
+    const { parsed } = parseFile(PDF, 's.pdf');
+    const transfer = parsed.rows.find(
+      (r) => r.date === '2026-06-30' && /United Bank For Africa/i.test(r.description)
+    );
+
+    expect(transfer, 'the 30 Jun UBA transfer').toBeTruthy();
+    expect(transfer!.amountMinor).toBe(1500000);
+  });
+
+  it('keeps a wrapped description whole and out of its neighbours', () => {
+    const { parsed } = parseFile(PDF, 's.pdf');
+    const wrapped = parsed.rows.find((r) => /ABDULLAH OLALEKAN ADIGUN/i.test(r.description));
+
+    expect(wrapped, 'the transfer whose description wraps onto three lines').toBeTruthy();
+    expect(wrapped!.description).toContain('OPay');
+    // Its neighbour's text must not have leaked in.
+    expect(wrapped!.description).not.toMatch(/Mobile Data|Stamp Duty/i);
+    expect(wrapped!.amountMinor).toBe(-500000);
   });
 });

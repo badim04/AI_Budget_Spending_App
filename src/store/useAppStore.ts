@@ -22,6 +22,7 @@ import { buildDemoSnapshot } from '../db/demoData';
 import {
   buildMerchantHistory,
   categorise,
+  isFiled,
   merchantKey,
   suggestRuleFromCorrection,
   type CategoriseDeps,
@@ -33,6 +34,7 @@ import type {
   Account,
   Budget,
   Category,
+  CategoryKind,
   ID,
   Receipt,
   RecurringRule,
@@ -61,11 +63,22 @@ interface AppState extends Snapshot {
    *  offers to make it a permanent rule. */
   categoriseTransaction: (id: ID, categoryId: ID) => Promise<CategoryRule | null>;
   markReviewed: (id: ID) => Promise<void>;
+  /**
+   * Clear a whole batch of review items in one write.
+   *
+   * A statement import can drop 160 rows into the queue at once, and confirming
+   * them one at a time is the single worst chore in the app. Passing a
+   * `categoryId` files them all under it; omitting it just accepts the
+   * suggestions already attached.
+   */
+  reviewMany: (ids: ID[], categoryId?: ID) => Promise<number>;
   commitStaged: (drafts: Array<Omit<Transaction, 'id' | 'createdAt' | 'updatedAt'>>) => Promise<number>;
 
   saveAccount: (a: Account) => Promise<void>;
   saveBudget: (b: Budget) => Promise<void>;
   saveCategory: (c: Category) => Promise<void>;
+  /** Create a category from the picker, without leaving what you were doing. */
+  addCategory: (input: { name: string; kind: CategoryKind; icon?: string; color?: string }) => Promise<Category>;
   saveRecurringRule: (r: RecurringRule) => Promise<void>;
   saveGoal: (g: Goal) => Promise<void>;
   deleteGoal: (id: ID) => Promise<void>;
@@ -337,6 +350,61 @@ export const useAppStore = create<AppState>((set, get) => ({
     await get().updateTransaction(id, { reviewed: true });
   },
 
+  reviewMany: async (ids, categoryId) => {
+    const wanted = new Set(ids);
+    const stamp = nowISO();
+    const touched: Transaction[] = [];
+
+    // One state update and one pass over the list, rather than N of each. At
+    // 160 rows the per-row version re-rendered the whole screen 160 times.
+    set((s) => ({
+      transactions: s.transactions.map((t) => {
+        if (!wanted.has(t.id) || t.deletedAt) return t;
+
+        const nextCategoryId = categoryId ?? t.categoryId;
+        // Nothing to accept: no real suggestion and nothing chosen. The seeded
+        // "Uncategorised" category counts as nothing.
+        if (!categoryId && !isFiled(nextCategoryId)) return t;
+        if (!nextCategoryId) return t;
+
+        const updated: Transaction = {
+          ...t,
+          categoryId: nextCategoryId,
+          reviewed: true,
+          confidence: categoryId ? 'high' : t.confidence,
+          updatedAt: stamp,
+        };
+        touched.push(updated);
+        return updated;
+      }),
+      revision: s.revision + 1,
+    }));
+
+    for (const transaction of touched) {
+      repository().saveTransaction(transaction).catch((e) =>
+        set({ lastError: `Could not save transaction: ${e}` })
+      );
+    }
+
+    return touched.length;
+  },
+
+  /**
+   * Write an import to the database, then show it.
+   *
+   * Deliberately not optimistic, and this is the one place that matters.
+   *
+   * It used to update the store first and fire the write without awaiting it.
+   * When the write failed — a UNIQUE violation on `dedupe_key` rolled back all
+   * 228 rows of a statement import — the failure went into `lastError`, which
+   * nothing displayed, and the screen reported success. The rows lived in
+   * memory until the next reload and then disappeared, with no error anywhere,
+   * long after the import that had "worked".
+   *
+   * An optimistic update is a promise that the write will succeed. For a
+   * hundred rows of somebody's financial history that is not a promise worth
+   * making: persist first, and let the caller show a real failure.
+   */
   commitStaged: async (drafts) => {
     const now = nowISO();
     const rows: Transaction[] = drafts.map((d) => ({
@@ -346,10 +414,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       updatedAt: now,
     }));
     if (rows.length === 0) return 0;
+
+    // Throws on failure. The import screen catches it and says so.
+    await repository().saveTransactions(rows);
+
     set((s) => ({ transactions: [...rows, ...s.transactions], revision: s.revision + 1 }));
-    repository().saveTransactions(rows).catch((e) =>
-      set({ lastError: `Could not save imported transactions: ${e}` })
-    );
     return rows.length;
   },
 
@@ -371,6 +440,31 @@ export const useAppStore = create<AppState>((set, get) => ({
   saveCategory: async (c) => {
     set((s) => ({ categories: upsert(s.categories, c), revision: s.revision + 1 }));
     repository().saveCategory(c).catch((e) => set({ lastError: String(e) }));
+  },
+
+  addCategory: async (input) => {
+    const name = input.name.trim();
+    const existing = get().categories.find(
+      (c) => !c.archived && c.kind === input.kind && c.name.toLowerCase() === name.toLowerCase()
+    );
+    // Typing a name that already exists should select it, not create a twin.
+    if (existing) return existing;
+
+    const category: Category = {
+      id: newId('cat'),
+      name,
+      kind: input.kind,
+      icon: input.icon ?? (input.kind === 'income' ? '➕' : '🏷️'),
+      color: input.color ?? '#7C8CF8',
+      excludeFromTotals: false,
+      // After the seeded ones, so a new category does not jump the list.
+      sortOrder: Math.max(0, ...get().categories.map((c) => c.sortOrder)) + 1,
+      archived: false,
+      isSystem: false,
+    };
+
+    await get().saveCategory(category);
+    return category;
   },
 
   saveRecurringRule: async (r) => {

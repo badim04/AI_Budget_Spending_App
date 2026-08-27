@@ -14,7 +14,7 @@
  * who already ran version 3 will never run your edited version 3 again.
  */
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 export interface Migration {
   version: number;
@@ -84,8 +84,8 @@ export const MIGRATIONS: Migration[] = [
         receipt_id            TEXT,
         recurring_rule_id     TEXT,
         tags                  TEXT NOT NULL DEFAULT '[]',
-        -- Hash of account+date+amount+descriptor. UNIQUE is what actually stops
-        -- the same payment arriving twice from an email receipt and a bank feed.
+        -- Account+date+amount. Used to recognise the same payment arriving from
+        -- two sources. NOT unique — see migration 2.
         dedupe_key            TEXT NOT NULL,
         pending               INTEGER NOT NULL DEFAULT 0,
         created_at            TEXT NOT NULL,
@@ -233,6 +233,38 @@ export const MIGRATIONS: Migration[] = [
         key                   TEXT PRIMARY KEY NOT NULL,
         value                 TEXT NOT NULL
       );`,
+    ],
+  },
+  {
+    version: 2,
+    name: 'dedupe-key-is-not-unique',
+    statements: [
+      // The unique index on dedupe_key destroyed real data.
+      //
+      // A key is account|date|amount, on the theory that "two genuinely
+      // distinct payments of the identical amount on the same day to the same
+      // account are rare". On a Nigerian fintech statement they are routine:
+      // stamp duty is a flat 50 kobo-exact charge on every qualifying
+      // transfer, so three of them land on the same day for the same amount.
+      // One real 229-row statement contained 13 such transactions across 10
+      // colliding keys.
+      //
+      // The insert only declared `ON CONFLICT(id)`, so a dedupe_key collision
+      // was an unhandled UNIQUE violation. It was raised inside the batch's
+      // `withTransactionAsync`, which rolled back **every row in the import**.
+      // The store had already been updated optimistically and the rejection
+      // was swallowed into `lastError`, so the app showed 228 imported
+      // transactions that were never written. They survived until the next
+      // reload — a pull-to-refresh, or reopening the app — and then vanished.
+      //
+      // Deduplication is a product judgement, made visibly at import time
+      // where the user is told how many rows were skipped. A database
+      // constraint is the wrong place to enforce a heuristic: it cannot ask,
+      // it can only reject, and rejecting a transaction someone actually made
+      // is never the right answer. The index stays for lookup speed; the
+      // uniqueness goes.
+      `DROP INDEX IF EXISTS idx_tx_dedupe;`,
+      `CREATE INDEX IF NOT EXISTS idx_tx_dedupe ON transactions(dedupe_key);`,
     ],
   },
 ];

@@ -318,6 +318,12 @@ export interface CategoryTotal {
   /** Change against the previous comparable period, as a fraction. Null when
    *  there is no prior data to compare against. */
   changeVsPrevious: number | null;
+  /**
+   * The categories rolled up into this row, for the synthetic "Other" bucket.
+   * Absent on a real category. Lets a tap on "Other (3)" open the three
+   * categories it stands for instead of a dead end.
+   */
+  memberIds?: ID[];
 }
 
 export interface BudgetStatus {

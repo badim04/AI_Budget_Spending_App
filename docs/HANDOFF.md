@@ -1,6 +1,7 @@
 # Finlo — handoff
 
-Everything a new session needs to continue. Written 2026-08-25.
+Everything a new session needs to continue. Written 2026-08-25,
+updated 2026-08-26 (statement import correctness, review UX).
 
 ---
 
@@ -14,7 +15,7 @@ codebase. Expo SDK 52 + React Native 0.76 + TypeScript, expo-router.
 - **Expo:** owner `badim04s-team`, slug `budgetspenderappfinlo`,
   projectId `240fc2a2-71ba-4e64-b2b8-29efd995522d`
 - **Git:** local only, branch `master`. **No GitHub remote yet.**
-- **347 tests pass**, `tsc --noEmit -p tsconfig.json` is clean,
+- **465 tests pass** (13 skip without the sample statements in Downloads), `tsc --noEmit -p tsconfig.json` is clean,
   `npx expo-doctor` passes.
 
 Owner is in Nigeria; default currency NGN. Testers are real people getting an
@@ -33,7 +34,7 @@ APK link, including strangers.
 
 ---
 
-## The five rules that cost real time to learn
+## The rules that cost real time to learn
 
 1. **Metro caches aggressively.** When behaviour does not match the code,
    restart with `npm start -- --clear` *before* debugging. This sent a whole
@@ -52,7 +53,17 @@ APK link, including strangers.
    `npm run web` and never reaches the APK. Build-time keys must be set with
    `eas env:create` (now `eas env:set`) per environment.
 5. **Get the real crash log.** `adb logcat` ended two multi-hour guessing
-   sessions in minutes. PowerShell writes UTF-16, so decode before grepping.
+   sessions in minutes (`npm run logcat` filters it). PowerShell writes UTF-16,
+   so decode before grepping.
+7. **Never let the database enforce a guess, and never claim a write that has
+   not happened.** A UNIQUE index on `dedupe_key` plus an unawaited optimistic
+   write silently lost a tester's entire 228-row import. See ARCHITECTURE.
+8. **Node and Chrome have APIs the phone does not.** `new TextDecoder('latin1')`
+   at module scope killed the app the moment the import screen was required —
+   Expo's polyfill decodes UTF-8 only. Tests, web and the bundler were all
+   green. Decode bytes with `src/ingest/bytes.ts`;
+   `tests/runtimeCompat.test.ts` guards it. And test on device with a **dev
+   build**, where an error is a red screen instead of the app closing.
 
 ---
 
@@ -143,7 +154,13 @@ npx tsc --noEmit -p tsconfig.json
 npm run web                  # localhost:8081
 npm start                    # Expo Go via QR
 
+npm run dev                  # dev build + Metro: save a file, phone reloads (~1s)
+npm run dev:usb              # same, over a USB cable
+npm run apk:dev              # build the dev client — ONCE, then never again
+npm run logcat               # filtered adb logcat
+
 npm run push -- "message"    # OTA: JS-only changes, live in seconds
+npm run push:check           # can this network reach Expo? (no upload)
 npm run apk                  # new APK: needed for native changes
 ```
 
@@ -159,12 +176,28 @@ is IPv6-only from here; if DNS fails use
 
 ## Immediate next steps
 
-1. **Rebuild** — the keys are set but the current APK predates them, so OCR,
-   Gemini and Gmail all still read "Not configured" on device.
-2. Verify on device: batch receipts, PDF statement import, report export.
-3. Decide device-lock vs accounts.
-4. Deploy the LLM proxy before wider distribution.
-5. Push to GitHub — repo does not exist yet:
+1. **Ship over the air** — all JS, no build:
+   `npm run push -- "Import correctness, review queue, Gemini model"`.
+   If it dies with `EAI_AGAIN`, that is DNS, not the app — the update simply
+   did not upload. `npm run push:check` says which host failed and whether a
+   public resolver can find it. When it can, the fix is to point Windows DNS at
+   1.1.1.1 / 8.8.8.8, or tether to the phone. This network's resolver
+   intermittently fails on `*.storage.googleapis.com`.
+   Then force-close Finlo and reopen it twice.
+
+   **Re-import the statement afterwards and delete the earlier import.** The
+   rows already in the database were read with the broken column alignment, so
+   some of their amounts are wrong (a 15,000.00 transfer was stored as
+   16,840.00, the running balance beside it).
+2. **Rebuild** — the keys are set but the current APK predates them, so OCR,
+   Gemini and Gmail all still read "Not configured" on device. This build also
+   picks up `expo-dev-client`.
+3. **Build the dev client once** (`npm run apk:dev`) and stop rebuilding for
+   JS changes. See `docs/SETUP.md` › "Which loop to use".
+4. Verify on device: batch receipts, PDF statement import, report export.
+5. Decide device-lock vs accounts.
+6. Deploy the LLM proxy before wider distribution.
+7. Push to GitHub — repo does not exist yet:
    ```bash
    git remote add origin https://github.com/badim04/finlo.git   # create it private first
    git push -u origin master

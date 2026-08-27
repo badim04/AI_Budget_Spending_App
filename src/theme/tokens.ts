@@ -5,12 +5,15 @@
  * counter, so the dark surface is the designed one and light is derived from
  * the same ramps rather than being an inverted afterthought.
  *
- * Two rules make the whole thing hang together:
+ * Three rules make the whole thing hang together:
  *   1. Numbers are the interface. Everything else recedes — surfaces are near
- *      neutral, borders are barely there, and colour is spent only where it
- *      encodes something.
+ *      neutral and borders are barely there.
  *   2. Colour never carries meaning alone. Every series colour is paired with a
  *      label, every status colour with an icon and a word.
+ *   3. Data colour is earned, chrome colour is chosen. A series hue encodes a
+ *      category and cannot be picked for looks; a `feature` fill is behind a
+ *      headline figure to draw the eye and encodes nothing, so it can be as
+ *      loud as the brand wants.
  *
  * The categorical series palette is the validated eight-hue set: worst adjacent
  * CVD ΔE 9.1 light / 8.4 dark, worst adjacent normal-vision ΔE 19.6 / 19.3,
@@ -95,6 +98,29 @@ const dark = {
 
   series: SERIES_DARK,
   otherSeries: OTHER_SERIES.dark,
+
+  /**
+   * Saturated card fills, for the one or two things a screen is actually about.
+   *
+   * The rest of this file spends colour sparingly, and that still holds for
+   * data: a chart series means something, so it cannot be chosen for looks.
+   * These are different — they are chrome, not encoding. A headline figure sits
+   * on a solid block of colour so the eye lands on it before anything else,
+   * which is the trick every consumer finance app in this market uses and the
+   * reason their dashboards feel navigable at a glance.
+   *
+   * `sheen` is a translucent white laid over the fill to fake the depth a
+   * gradient would give. A real gradient needs `expo-linear-gradient`, which is
+   * a native dependency, and this app ships JavaScript-only updates to builds
+   * that may be older than the change.
+   */
+  feature: {
+    primary: { bg: '#3d5afe', fg: '#ffffff', muted: 'rgba(255,255,255,0.72)' },
+    savings: { bg: '#7c4dff', fg: '#ffffff', muted: 'rgba(255,255,255,0.72)' },
+    spend: { bg: '#ff5722', fg: '#ffffff', muted: 'rgba(255,255,255,0.76)' },
+    calm: { bg: '#00b686', fg: '#00291d', muted: 'rgba(0,41,29,0.66)' },
+  },
+  sheen: 'rgba(255,255,255,0.10)',
 };
 
 const light: typeof dark = {
@@ -137,6 +163,15 @@ const light: typeof dark = {
 
   series: SERIES_LIGHT,
   otherSeries: OTHER_SERIES.light,
+
+  /** See the dark palette: chrome, not data encoding. */
+  feature: {
+    primary: { bg: '#3d5afe', fg: '#ffffff', muted: 'rgba(255,255,255,0.78)' },
+    savings: { bg: '#7c4dff', fg: '#ffffff', muted: 'rgba(255,255,255,0.78)' },
+    spend: { bg: '#f4511e', fg: '#ffffff', muted: 'rgba(255,255,255,0.82)' },
+    calm: { bg: '#00a97b', fg: '#00291d', muted: 'rgba(0,41,29,0.7)' },
+  },
+  sheen: 'rgba(255,255,255,0.16)',
 };
 
 export type Palette = typeof dark;

@@ -41,6 +41,77 @@ Slower, but it works from anywhere, including mobile data.
 Expo Go is the right way to check the app on a real phone. You need your own
 build only when you want it installed as *your* app, or want notifications.
 
+### The dev build — change code, see it on the phone in a second
+
+This is the answer to "do I have to build an APK every time?". No. Build once,
+then never again until you touch native code.
+
+A **development build** is your real app — your icon, your package name, every
+native module the preview APK has — except its JavaScript comes from Metro
+running on your laptop instead of being frozen inside the APK. Save a file, the
+phone reloads. About a second.
+
+Build it once:
+
+```bash
+npm run apk:dev
+```
+
+Install that APK the same way you install the preview one. It has the same
+package name, so it replaces the Finlo already on the phone and keeps its
+data. Re-installing the preview APK later puts you back.
+
+From then on, every session is just:
+
+```bash
+npm run dev
+```
+
+Open Finlo on the phone and it connects to your laptop. Phone and laptop must
+be on the same Wi-Fi. If they are not, or the network blocks it:
+
+```bash
+npm run dev:usb      # USB cable, adb; fastest and most reliable
+npm run dev:tunnel   # works from anywhere, including mobile data; slower
+```
+
+What that buys you:
+
+- **Save a file, see it.** Fast Refresh, ~1 second, state preserved.
+- **Errors become a red screen with a stack trace** instead of the app silently
+  closing. The bank-statement import crash was a one-line `RangeError` that a
+  dev build would have shown in thirty seconds; finding it without one took a
+  full build cycle.
+- **`.env` works.** The bundle is built on your laptop, so `EXPO_PUBLIC_*` keys
+  come straight from `.env` — no `eas env:set`, no rebuild, just restart Metro.
+  That trap only applies to cloud builds.
+- **Dev menu**: shake the phone, or press `m` in the terminal. Reload, element
+  inspector, performance monitor. `j` opens the JS debugger.
+
+You need a new APK again only when you add or remove a native package, or edit
+`app.json` — plugins, permissions, icon, splash, package name.
+
+### Which loop to use
+
+Cheapest first. Most changes never need to go past the second row.
+
+| Loop | Change to seen | Good for |
+|---|---|---|
+| `npm test` | ~3 s | money, dates, parsing, categorisation, forecasting |
+| `npm run web` | ~1 s | screens, layout, navigation, anything not native |
+| `npm run dev` | ~1 s, on the real phone | everything, including native and Hermes |
+| `npm run push -- "msg"` | ~30 s + app restart | getting a JS fix to testers |
+| `npm run apk` | ~15 min | native changes, and new tester builds |
+
+The gap between rows 2 and 3 is where bugs hide. Node and Chrome have Web APIs
+that React Native does not, so logic can pass every test and still crash on the
+phone. When something is wrong only on device, go straight to row 3 — or get
+the log:
+
+```bash
+npm run logcat
+```
+
 ### Your own installable build
 
 No Mac or Android Studio required — it builds in Expo's cloud:

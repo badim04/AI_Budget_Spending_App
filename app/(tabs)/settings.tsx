@@ -7,13 +7,14 @@
  */
 
 import React, { useState } from 'react';
-import { ScrollView, View, Text, Pressable, TextInput, Platform, Alert, StyleSheet } from 'react-native';
+import { ScrollView, View, Text, Pressable, TextInput, Platform, Alert, StyleSheet, Switch } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { Button, Card, Pill, SectionHeader } from '../../src/components/ui/Primitives';
 import { useAppStore } from '../../src/store/useAppStore';
+import { pingLlm } from '../../src/ingest/llm';
 import { CURRENCIES, formatMoney, money } from '../../src/core/money';
 import { accountBalance } from '../../src/core/analytics';
 import { ocrStatus } from '../../src/ingest/receipt/ocr';
@@ -74,6 +75,10 @@ export default function SettingsScreen() {
     permissionState().then((p) => setAlertState(p)).catch(() => setAlertState('unsupported'));
   }, []);
   const setSetting = useAppStore((s) => s.setSetting);
+  const categories = useAppStore((s) => s.categories);
+  const [aiTest, setAiTest] = useState<'idle' | 'testing' | 'ok' | 'failed'>('idle');
+  const [aiDetail, setAiDetail] = useState('');
+  const ignoreInternal = useAppStore((s) => s.settings.ignore_internal_transfers) !== 'false';
   const saveAccount = useAppStore((s) => s.saveAccount);
   const seedDemoData = useAppStore((s) => s.seedDemoData);
   const resetAll = useAppStore((s) => s.resetAll);
@@ -407,11 +412,70 @@ export default function SettingsScreen() {
           tone={llm.configured ? (llm.keyInBundle ? 'warning' : 'good') : 'neutral'}
           hint={llm.note}
         />
+
+        {/* "Configured" only means a key is present. Whether the model answers
+            is a different question, and the app was quietly answering it wrong
+            for weeks after Google retired the model it was pinned to. */}
+        {llm.configured ? (
+          <View style={{ marginTop: sp.md }}>
+            <Button
+              label={aiTest === 'testing' ? 'Asking…' : 'Test the AI now'}
+              variant="secondary"
+              onPress={async () => {
+                setAiTest('testing');
+                const result = await pingLlm(categories);
+                setAiTest(result.ok ? 'ok' : 'failed');
+                setAiDetail(`${result.model}: ${result.detail}`);
+              }}
+            />
+            {aiTest !== 'idle' && aiDetail ? (
+              <Text
+                style={[
+                  t.micro,
+                  {
+                    color: aiTest === 'ok' ? c.good : aiTest === 'failed' ? c.warning : c.textMuted,
+                    marginTop: sp.sm,
+                  },
+                ]}
+              >
+                {aiTest === 'ok' ? 'Working. ' : aiTest === 'failed' ? 'Not working. ' : ''}
+                {aiDetail}
+              </Text>
+            ) : null}
+          </View>
+        ) : null}
         <Row
           label="Statement import"
-          value="CSV"
+          value="PDF · Excel · CSV"
           hint="Import a bank statement and categorise a whole date range at once."
         />
+
+        {/* Autosave pots are common here and useless to review one row at a
+            time, but plenty of people do not use one — hence a switch, not an
+            assumption. */}
+        <Pressable
+          onPress={() =>
+            setSetting('ignore_internal_transfers', ignoreInternal ? 'false' : 'true')
+          }
+          style={{ flexDirection: 'row', alignItems: 'center', marginTop: sp.lg }}
+        >
+          <View style={{ flex: 1, paddingRight: sp.md }}>
+            <Text style={[t.body, { color: c.textPrimary }]}>Ignore autosave moves</Text>
+            <Text style={[t.micro, { color: c.textMuted, marginTop: 2 }]}>
+              {ignoreInternal
+                ? 'Money swept into OWealth, Cashbox or Spend-and-Save and back is filed as a transfer, not as spending.'
+                : 'Every leg of an autosave round trip is imported as an ordinary transaction.'}
+            </Text>
+          </View>
+          <Switch
+            value={ignoreInternal}
+            onValueChange={(next: boolean) =>
+              setSetting('ignore_internal_transfers', next ? 'true' : 'false')
+            }
+            trackColor={{ true: c.accent, false: c.border }}
+          />
+        </Pressable>
+
         <View style={{ marginTop: sp.lg }}>
           <Button
             label="Import a bank statement"

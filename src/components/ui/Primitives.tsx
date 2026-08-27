@@ -9,6 +9,7 @@
 import React from 'react';
 import { View, Text, Pressable, StyleSheet, type ViewStyle } from 'react-native';
 import { useTheme } from '../../theme/ThemeProvider';
+import { useCountUp } from '../../theme/motion';
 import { formatMoney, type Money } from '../../core/money';
 import { tabularNumbers } from '../../theme/tokens';
 
@@ -81,18 +82,30 @@ export function AmountText({
   color,
   signed,
   abbreviate,
+  animate = false,
 }: {
   value: Money;
   size?: 'hero' | 'display' | 'title' | 'body' | 'caption';
   color?: string;
   signed?: boolean;
   abbreviate?: boolean;
+  /**
+   * Count up to the new figure instead of snapping to it.
+   *
+   * Only worth it for a headline number that changes in response to something
+   * the user just did — paging to another month, say. On a list it is noise,
+   * and the count is driven from JavaScript because text content cannot be
+   * animated natively, so it is opt-in rather than the default.
+   */
+  animate?: boolean;
 }) {
   const { c, type: t } = useTheme();
   const style = size === 'body' ? t.bodyStrong : t[size];
+  const shown = useCountUp(value.minor, animate);
+
   return (
     <Text style={[style, tabularNumbers, { color: color ?? c.textPrimary }]}>
-      {formatMoney(value, { signed, abbreviate })}
+      {formatMoney(animate ? { ...value, minor: shown } : value, { signed, abbreviate })}
     </Text>
   );
 }

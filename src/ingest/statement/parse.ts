@@ -137,7 +137,7 @@ function sniffDelimiter(text: string): string {
 
 const HEADER_PATTERNS: Record<keyof ColumnMap, RegExp[]> = {
   date: [
-    /^(transaction|value|posting|trans|entry|booking)?\s*date/i,
+    /^(transaction|value|posting|trans|entry|booking)?\.?\s*date/i,
     /^date$/i,
     /^dt$/i,
   ],
@@ -150,7 +150,7 @@ const HEADER_PATTERNS: Record<keyof ColumnMap, RegExp[]> = {
   debit: [/^debit/i, /^withdrawal/i, /^money\s*out/i, /^paid\s*out/i, /^dr\b/i],
   credit: [/^credit/i, /^deposit/i, /^money\s*in/i, /^paid\s*in/i, /^cr\b/i],
   balance: [/balance/i, /^bal$/i],
-  reference: [/^(ref|reference|transaction\s*id|txn\s*id|cheque)/i],
+  reference: [/^(ref|reference|transaction\s*(id|ref)|txn\s*id|cheque)/i],
 };
 
 export function detectColumns(headers: string[]): ColumnMap | null {
@@ -234,10 +234,16 @@ export function parseStatementGrid(
   const columns = detectColumns(headers)!;
   const rows: StatementRow[] = [];
 
+  const headerSignature = headers.join('\u0000');
+
   for (let i = headerIndex + 1; i < grid.length; i++) {
     const cells = grid[i];
     const lineNo = i + 1;
     const raw = cells.join(' | ');
+
+    // Multi-sheet workbooks and multi-page PDFs repeat their header. Skipping
+    // it silently keeps the problem list about real rows.
+    if (cells.map((c) => c.trim()).join('\u0000') === headerSignature) continue;
 
     const dateCell = (cells[columns.date] ?? '').trim();
     if (!dateCell) continue; // trailing totals row, or a blank separator
@@ -346,6 +352,16 @@ function readAmount(
   if (/\bCR\b/i.test(cell)) return Math.abs(parsed.minor);
   if (/\bDR\b/i.test(cell)) return -Math.abs(parsed.minor);
   return parsed.minor;
+}
+
+/**
+ * Does this cell look like a date?
+ *
+ * Used by the PDF reader to tell a new transaction from the wrapped remainder
+ * of the last one, so it has to be cheap and it has to say no to a bare amount.
+ */
+export function looksLikeDate(cell: string): boolean {
+  return normaliseDate(cell) != null;
 }
 
 /** Accepts ISO, d/m/y, m/d/y and written months, resolving ambiguity the same

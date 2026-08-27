@@ -50,7 +50,19 @@ export interface DashboardData {
   displayCurrency: string;
   safeToSpend: Money;
   safeToSpendPerDay: Money;
+  /**
+   * Everything spent in the period.
+   *
+   * Not the same as `budgetedSpend`, and the difference is the whole reason
+   * this exists: the headline used to be the budget aggregate, so a user with
+   * no budgets — or with spending outside the categories they had budgeted —
+   * saw "Spent this month ₦0.00" while the breakdown right below it listed
+   * ₦113,120. A total that disagrees with the list under it is worse than no
+   * total at all.
+   */
   spent: Money;
+  /** Spend that fell inside a budget envelope. Pairs with `allocated`. */
+  budgetedSpend: Money;
   allocated: Money;
   utilisation: number | null;
   budgets: BudgetStatus[];
@@ -179,9 +191,13 @@ export function useDashboardData(asOfOverride?: ISODate) {
       weeks.map((w) => w.end)
     );
 
-    const categoryRows = withOtherBucket(
-      categoryTotals(range, analytics, 'expense'),
-      7,
+    const allCategoryRows = categoryTotals(range, analytics, 'expense');
+    const categoryRows = withOtherBucket(allCategoryRows, 7, displayCurrency);
+
+    // The same basis the breakdown uses, so the headline and the list below it
+    // can never disagree.
+    const periodSpend = money(
+      allCategoryRows.reduce((total, row) => total + row.total.minor, 0),
       displayCurrency
     );
 
@@ -191,7 +207,8 @@ export function useDashboardData(asOfOverride?: ISODate) {
       displayCurrency,
       safeToSpend: safe,
       safeToSpendPerDay: money(Math.round(safe.minor / remainingDays), displayCurrency),
-      spent: aggregate.spent,
+      spent: periodSpend,
+      budgetedSpend: aggregate.spent,
       allocated: aggregate.allocated,
       utilisation: aggregate.utilisation,
       budgets,

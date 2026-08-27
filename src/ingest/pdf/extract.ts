@@ -26,6 +26,7 @@
  */
 
 import { inflate, inflateRaw } from 'pako';
+import { decodeLatin1 } from '../bytes';
 
 export interface TextItem {
   text: string;
@@ -46,7 +47,10 @@ export interface PdfExtraction {
   warning?: string;
 }
 
-const DECODER = new TextDecoder('latin1');
+// Latin-1 rather than `new TextDecoder('latin1')`: React Native has no
+// TextDecoder, and Expo's polyfill decodes UTF-8 only — every other label
+// throws. Built at module scope, that RangeError took the whole app down the
+// moment this file was imported. See `src/ingest/bytes.ts`.
 
 export function isPdf(bytes: Uint8Array): boolean {
   return (
@@ -88,7 +92,7 @@ export function extractPdfText(
     };
   }
 
-  const raw = DECODER.decode(bytes);
+  const raw = decodeLatin1(bytes);
   const objects = indexObjects(raw, bytes);
   const cmaps = buildCMaps(raw, bytes, objects);
   const fontsByResource = mapFontResources(raw, objects, cmaps);
@@ -99,7 +103,7 @@ export function extractPdfText(
   for (const obj of objects) {
     const data = inflateStream(bytes, obj);
     if (!data) continue;
-    const content = DECODER.decode(data);
+    const content = decodeLatin1(data);
     if (!/(?:Tj|TJ)/.test(content)) continue;
     page += 1;
     readContentStream(content, cmaps, fontsByResource, page, items);
@@ -186,7 +190,7 @@ function buildCMaps(raw: string, bytes: Uint8Array, objects: PdfObject[]): Map<n
   for (const obj of objects) {
     const data = inflateStream(bytes, obj);
     if (!data) continue;
-    const text = DECODER.decode(data);
+    const text = decodeLatin1(data);
     if (!text.includes('begincmap')) continue;
     byObject.set(obj.num, parseCMap(text));
   }
@@ -358,7 +362,7 @@ function decodeString(token: string, cmap: CMap | undefined): string {
     if (two.hits >= one.hits) return two.text;
     return one.text;
   }
-  return DECODER.decode(Uint8Array.from(bytes));
+  return decodeLatin1(Uint8Array.from(bytes));
 }
 
 function decodeWith(

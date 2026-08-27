@@ -15,6 +15,7 @@
  * testable and the network call lives at the edge.
  */
 
+import { noteKey, transferNote } from './notes';
 import type { Category, ConfidenceLevel, ID, Transaction } from './types';
 
 export interface CategoryRule {
@@ -130,6 +131,8 @@ export const KEYWORD_LEXICON: Record<string, string[]> = {
   airtime_data: [
     'mtn', 'airtel', 'glo', '9mobile', 'etisalat', 'airtime', 'recharge', 'data bundle',
     'top up', 'topup', 'vodafone', 'verizon', 'at&t', 'giffgaff', 'phone credit',
+    // Exactly how OPay writes it: "Mobile Data | 0801... | MTN | 3.2GB 2 Days Plan".
+    'mobile data', 'airtime purchase', 'data plan',
   ],
   rent_housing: [
     'rent', 'landlord', 'service charge', 'estate dues', 'mortgage', 'accommodation',
@@ -148,6 +151,8 @@ export const KEYWORD_LEXICON: Record<string, string[]> = {
   shopping: [
     'jumia', 'konga', 'amazon', 'aliexpress', 'shein', 'temu', 'ebay', 'asos', 'zara',
     'h m', 'nike', 'adidas', 'slot', 'pointek', 'store', 'boutique', 'mall', 'clothing',
+    // OPay's wording for buying from a merchant through the app.
+    'third party merchant order', 'merchant order',
   ],
   education: [
     'school fees', 'tuition', 'university', 'college', 'waec', 'jamb', 'neco', 'course',
@@ -156,6 +161,10 @@ export const KEYWORD_LEXICON: Record<string, string[]> = {
   entertainment: [
     'cinema', 'filmhouse', 'silverbird', 'genesis cinema', 'imax', 'concert', 'ticket',
     'game', 'playstation', 'xbox', 'steam', 'nintendo', 'club', 'party',
+    // Betting is a large, recognisable slice of Nigerian statements and was
+    // landing in the review queue every single time.
+    'sportybet', 'bet9ja', 'betking', 'nairabet', 'betway', '1xbet', 'msport',
+    'merrybet', 'betano', 'football com', 'bangbet',
   ],
   personal_care: [
     'salon', 'barber', 'spa', 'gym', 'fitness', 'haircut', 'nails', 'skincare',
@@ -181,11 +190,65 @@ export const KEYWORD_LEXICON: Record<string, string[]> = {
     'upwork', 'fiverr', 'freelance', 'contract payment', 'consulting', 'invoice payment',
     'client payment', 'gig',
   ],
-  transfer: [
-    'transfer to', 'transfer from', 'own account', 'self transfer', 'wallet funding',
-    'moved to savings',
-  ],
+  // NOTE: nothing here may contain the word "transfer", "payment", "credit" or
+  // "debit" — `normaliseMerchant` strips those as payment-rail noise before
+  // matching, so such an entry can never fire. Moves between a person's own
+  // pots are detected from the raw descriptor instead, in
+  // `src/core/internalTransfer.ts`.
+  transfer: ['own account', 'self transfer', 'wallet funding', 'moved to savings'],
 };
+
+/**
+ * Words that are only trustworthy inside a transfer note.
+ *
+ * "light" means electricity here, and "fare" means transport — but a merchant
+ * called "Light House Cafe" is not a utility bill, so these must never be
+ * matched against a whole descriptor. Inside the note the sender typed, they
+ * are about as unambiguous as this gets: nobody writes "milk" on a transfer
+ * that was not for food.
+ *
+ * Keep it to things people actually type on a transfer. This is not a
+ * dictionary; every entry is a guess about intent, and a wrong guess is a
+ * miscategorised transaction.
+ */
+export const NOTE_LEXICON: Record<string, string[]> = {
+  groceries: [
+    'milk', 'bread', 'rice', 'garri', 'beans', 'yam', 'foodstuff', 'food stuff',
+    'provisions', 'market', 'market money', 'tomatoes', 'pepper', 'soup', 'egg',
+    'eggs', 'chicken', 'fish', 'meat', 'shopping money', 'groceries',
+  ],
+  eating_out: [
+    'ice cream', 'snack', 'snacks', 'lunch', 'breakfast', 'dinner', 'shawarma',
+    'chops', 'small chops', 'suya money', 'eat', 'chop',
+  ],
+  transport: [
+    'fuel', 'fare', 'transport fare', 'bike', 'keke', 'okada', 'cab', 'taxi money',
+    'trip', 'petrol money', 'transport money',
+  ],
+  rent_housing: ['rent', 'house rent', 'accommodation', 'agent fee', 'service charge'],
+  utilities: ['light', 'nepa bill', 'electricity bill', 'water bill', 'meter'],
+  airtime_data: ['data', 'airtime money', 'recharge card', 'subscription card'],
+  personal_care: ['hair', 'hairdo', 'makeup', 'nails', 'barbing', 'spa money'],
+  health: ['drugs', 'medicine', 'hospital bill', 'clinic', 'medical'],
+  education: ['school fees', 'tuition', 'textbook', 'exam fee', 'lesson'],
+  giving: ['gift', 'tithe', 'offering', 'sadaqah', 'zakat', 'support', 'help', 'assist'],
+};
+
+const NOTE_ENTRIES: Array<{ keyword: string; slug: string }> = (() => {
+  const entries: Array<{ keyword: string; slug: string }> = [];
+  for (const [slug, words] of Object.entries(NOTE_LEXICON)) {
+    for (const keyword of words) entries.push({ keyword, slug });
+  }
+  // Longest first, so "market money" beats "market".
+  return entries.sort((a, b) => b.keyword.length - a.keyword.length);
+})();
+
+/**
+ * A word in the payer's own note is worth more than the same word buried in a
+ * bank descriptor: they wrote it to say what the money was for. Enough of a
+ * lift to clear the auto-apply line for a short word like "rent".
+ */
+const NOTE_BOOST = 0.2;
 
 /** Reverse index built once: keyword -> category slug, longest keyword first. */
 const LEXICON_ENTRIES: Array<{ keyword: string; slug: string; weight: number }> = (() => {
@@ -204,6 +267,16 @@ const LEXICON_ENTRIES: Array<{ keyword: string; slug: string; weight: number }> 
 export interface MerchantHistory {
   /** merchantKey -> categoryId -> times chosen */
   counts: Map<string, Map<ID, number>>;
+  /**
+   * noteKey -> categoryId -> times chosen.
+   *
+   * Learned separately from the merchant because a note describes a purpose
+   * and travels across recipients: file one "milk" transfer as Groceries and
+   * every future transfer noted "milk" is recognised, whoever it went to.
+   * That is also how a personal shorthand nobody could ship in a lexicon —
+   * "chi" — becomes categorisable after being filed once.
+   */
+  notes: Map<string, Map<ID, number>>;
 }
 
 /**
@@ -215,18 +288,32 @@ export interface MerchantHistory {
  */
 export function buildMerchantHistory(transactions: Transaction[]): MerchantHistory {
   const counts = new Map<string, Map<ID, number>>();
-  for (const t of transactions) {
-    if (t.deletedAt || !t.categoryId || !t.reviewed) continue;
-    const key = merchantKey(t.rawDescription || t.merchant);
-    if (!key) continue;
-    let inner = counts.get(key);
+  const notes = new Map<string, Map<ID, number>>();
+
+  const record = (index: Map<string, Map<ID, number>>, key: string, categoryId: ID) => {
+    let inner = index.get(key);
     if (!inner) {
       inner = new Map();
-      counts.set(key, inner);
+      index.set(key, inner);
     }
-    inner.set(t.categoryId, (inner.get(t.categoryId) ?? 0) + 1);
+    inner.set(categoryId, (inner.get(categoryId) ?? 0) + 1);
+  };
+
+  for (const t of transactions) {
+    if (t.deletedAt || !t.categoryId || !t.reviewed) continue;
+
+    const raw = t.rawDescription || t.merchant;
+    const key = merchantKey(raw);
+    if (key) record(counts, key, t.categoryId);
+
+    const note = transferNote(raw);
+    if (note) {
+      const nk = noteKey(note);
+      if (nk) record(notes, nk, t.categoryId);
+    }
   }
-  return { counts };
+
+  return { counts, notes };
 }
 
 // ------------------------------------------------------------------- matching
@@ -300,32 +387,61 @@ export function categorise(
     };
   }
 
-  // 2. Learned history for this merchant.
-  const key = merchantKey(input.rawDescription || input.merchant);
-  const seen = deps.history.counts.get(key);
-  if (seen && seen.size > 0) {
-    let bestId: ID | null = null;
-    let bestCount = 0;
-    let total = 0;
-    for (const [categoryId, count] of seen) {
-      total += count;
-      if (count > bestCount) {
-        bestCount = count;
-        bestId = categoryId;
-      }
-    }
-    if (bestId) {
-      // Agreement across past choices, not just raw count — 5 of 5 is a much
-      // stronger signal than 5 of 12.
-      const agreement = bestCount / total;
-      const score = Math.min(0.99, agreement * (1 - 1 / (1 + bestCount)));
-      const name = deps.categories.find((c) => c.id === bestId)?.name ?? 'that category';
+  // 2. What has been learned — from this merchant, and from this note.
+  //
+  // Both are consulted and the stronger one wins rather than one taking fixed
+  // priority. A recipient tells you who got the money; the note tells you what
+  // it was for, and the same person receives money for different reasons. So
+  // "Transfer to RASHIDAT BASHIRU | milk" should be able to land on Groceries
+  // even if the last three transfers to her were filed as Giving.
+  const note = transferNote(input.rawDescription ?? input.merchant);
+
+  const merchantMatch = fromHistory(
+    deps.history.counts.get(merchantKey(input.rawDescription || input.merchant)),
+    deps,
+    (name, times) => `You filed this merchant as ${name} ${times} time${times === 1 ? '' : 's'}`
+  );
+
+  const noteMatch = note
+    ? fromHistory(
+        deps.history.notes.get(noteKey(note)),
+        deps,
+        (name, times) =>
+          `You filed "${note}" as ${name} ${times} time${times === 1 ? '' : 's'}`
+      )
+    : null;
+
+  const learned =
+    merchantMatch && noteMatch
+      ? noteMatch.score > merchantMatch.score
+        ? noteMatch
+        : merchantMatch
+      : (merchantMatch ?? noteMatch);
+
+  if (learned) return learned;
+
+  // 2b. The note, read against a vocabulary that only applies to notes.
+  //
+  // "light" is electricity and "fare" is transport when a person types them on
+  // a transfer, and neither is safe to match against a merchant name. Scored
+  // above the general lexicon because the payer wrote it themselves.
+  if (note) {
+    const hay = normaliseMerchant(note);
+    for (const entry of NOTE_ENTRIES) {
+      if (!containsWord(hay, entry.keyword)) continue;
+      const categoryId = deps.slugToCategoryId.get(entry.slug);
+      if (!categoryId) continue;
+
+      const category = deps.categories.find((c) => c.id === categoryId);
+      if (category && input.isInflow && category.kind === 'expense') continue;
+      if (category && !input.isInflow && category.kind === 'income') continue;
+
       return {
-        categoryId: bestId,
-        confidence: score > 0.7 ? 'high' : score > 0.45 ? 'medium' : 'low',
-        score,
-        reason: `You filed this merchant as ${name} ${bestCount} time${bestCount === 1 ? '' : 's'}`,
-        source: 'history',
+        categoryId,
+        confidence: 'medium',
+        score: Math.min(0.95, keywordScore(entry.keyword) + NOTE_BOOST),
+        reason: `You noted this "${note}"`,
+        source: 'keyword',
       };
     }
   }
@@ -344,13 +460,72 @@ export function categorise(
     return {
       categoryId,
       confidence: entry.weight >= 8 ? 'high' : 'medium',
-      score: Math.min(0.9, 0.5 + entry.weight / 40),
+      score: keywordScore(entry.keyword),
       reason: `"${entry.keyword}" is a known ${category?.name ?? entry.slug} merchant`,
       source: 'keyword',
     };
   }
 
   return null;
+}
+
+/**
+ * How much to trust a lexicon hit.
+ *
+ * Length alone was the proxy, and it ranked badly: "sportybet" is about as
+ * unambiguous as a descriptor gets, but at nine characters it scored below the
+ * auto-apply line while "money out" sailed over it. A real 229-row statement
+ * auto-filed 15 rows and sent 154 to review, most of them obvious.
+ *
+ * Specificity is the thing being estimated, so score it directly. A multi-word
+ * phrase ("mobile data") is specific because the words co-occur. A single long
+ * token ("sportybet", "shoprite") is specific because it is a brand nobody
+ * else is called. A short common word ("mtn", "bar", "uber") is neither, and
+ * still lands in review with the suggestion attached — which is the right
+ * outcome for something genuinely ambiguous.
+ */
+export function keywordScore(keyword: string): number {
+  const distinctive = keyword.includes(' ') || /^[a-z0-9]{6,}$/.test(keyword);
+  return Math.min(0.92, 0.5 + keyword.length / 40 + (distinctive ? 0.1 : 0));
+}
+
+/**
+ * Turn a tally of past choices into a suggestion.
+ *
+ * Agreement matters more than volume: five out of five is a much stronger
+ * signal than five out of twelve, and the `1 - 1/(1+n)` term stops a single
+ * past choice from scoring like a settled habit.
+ */
+function fromHistory(
+  seen: Map<ID, number> | undefined,
+  deps: CategoriseDeps,
+  explain: (name: string, times: number) => string
+): CategorySuggestion | null {
+  if (!seen || seen.size === 0) return null;
+
+  let bestId: ID | null = null;
+  let bestCount = 0;
+  let total = 0;
+  for (const [categoryId, count] of seen) {
+    total += count;
+    if (count > bestCount) {
+      bestCount = count;
+      bestId = categoryId;
+    }
+  }
+  if (!bestId) return null;
+
+  const agreement = bestCount / total;
+  const score = Math.min(0.99, agreement * (1 - 1 / (1 + bestCount)));
+  const name = deps.categories.find((c) => c.id === bestId)?.name ?? 'that category';
+
+  return {
+    categoryId: bestId,
+    confidence: score > 0.7 ? 'high' : score > 0.45 ? 'medium' : 'low',
+    score,
+    reason: explain(name, bestCount),
+    source: 'history',
+  };
 }
 
 /** Whole-word containment, so "uber" doesn't match "uberoi". */
@@ -369,6 +544,20 @@ function containsWord(haystack: string, needle: string): boolean {
  * Deliberately high — a wrong silent categorisation costs more trust than an
  * extra tap costs patience.
  */
+/**
+ * The seeded catch-all.
+ *
+ * It is a real category with a real id, which means "has a categoryId" is not
+ * the same as "has been worked out" — the bulk-accept button counted these as
+ * suggestions and offered to file rows nobody had filed.
+ */
+export const UNCATEGORISED_ID = 'cat_uncategorised';
+
+/** Does this transaction have a category worth accepting without looking? */
+export function isFiled(categoryId: string | null | undefined): boolean {
+  return categoryId != null && categoryId !== UNCATEGORISED_ID;
+}
+
 export const AUTO_APPLY_THRESHOLD = 0.75;
 
 export function shouldAutoApply(s: CategorySuggestion | null): boolean {

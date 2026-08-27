@@ -18,7 +18,8 @@ import type { CategoryTotal } from '../../core/types';
 
 interface Props {
   rows: CategoryTotal[];
-  onSelect?: (categoryId: string) => void;
+  /** The row comes too: "Other" needs its members, and the caller needs the name. */
+  onSelect?: (categoryId: string, row: CategoryTotal) => void;
   /** Show the +/- change against the previous period. */
   showChange?: boolean;
   maxRows?: number;
@@ -46,13 +47,14 @@ export function CategoryBreakdown({ rows, onSelect, showChange = true, maxRows =
         return (
           <Pressable
             key={row.categoryId}
-            onPress={() => onSelect?.(row.categoryId)}
+            onPress={() => onSelect?.(row.categoryId, row)}
             style={({ pressed }) => [
               styles.row,
               { paddingVertical: sp.md, opacity: pressed ? 0.6 : 1 },
             ]}
-            accessibilityRole="button"
-            accessibilityLabel={`${row.categoryName}, ${formatMoney(row.total)}, ${Math.round(row.share * 100)} percent`}
+            accessibilityRole={onSelect ? 'button' : 'text'}
+            accessibilityLabel={`${row.categoryName}, ${formatMoney(row.total)}, ${Math.round(row.share * 100)} percent${onSelect ? '. Opens its transactions.' : ''}`}
+            disabled={!onSelect}
           >
             <View style={styles.rowHeader}>
               <View style={styles.rowLabel}>
