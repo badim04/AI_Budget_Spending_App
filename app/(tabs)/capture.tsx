@@ -22,8 +22,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { useLayout } from '../../src/theme/layout';
-import { Tile, TileGrid, type TileTone } from '../../src/components/ui/Tiles';
-import { Button, Card, Pill, SectionHeader } from '../../src/components/ui/Primitives';
+import { Banner, Tile, TileGrid } from '../../src/components/ui/Tiles';
+import { Button, Card } from '../../src/components/ui/Primitives';
 import { useAppStore } from '../../src/store/useAppStore';
 import {
   CancelledError,
@@ -187,150 +187,96 @@ export default function CaptureScreen() {
         The less of this you do by hand, the better the numbers get.
       </Text>
 
-      {/* The two fastest ways in, side by side, before the long-form list.
-          Five identical stacked cards made every option look equally likely;
-          in practice people snap a receipt or type one in. */}
-      <TileGrid>
-        <Tile
-          tone="violet"
-          tag={busy === 'camera' ? 'Working' : Platform.OS === 'web' ? 'Photo' : 'Camera'}
-          title="Snap a receipt"
-          subtitle={ocr.configured ? `Read by ${ocr.name}` : 'Stored and searchable'}
-          glyph="📸"
-          index={0}
-          onPress={() => runCapture('camera')}
-        />
-        <Tile
-          tone="pink"
-          tag="Fastest"
-          title="Add manually"
-          subtitle="Amount, merchant, done"
-          glyph="✏️"
-          index={1}
-          onPress={() => router.push('/transaction/new')}
-        />
-      </TileGrid>
+      {/*
+        Six ways in, one grid.
 
-      <SectionHeader title="Bring it in automatically" />
+        This was two tiles and then four full-width cards stacked under a
+        heading — which said, structurally, that snapping a receipt was a
+        different kind of thing from importing a statement. It is not. They are
+        six routes to the same place, and a grid says so while a column of
+        banners says "read all of these in order".
 
-      <Method
-        icon="images-outline"
+        Status that changes what you would tap lives in the tag: Gmail says
+        whether it is connected, batch says how far through it is. Status that
+        is only reassurance lives under the grid, once.
+      */}
+      <View style={{ marginTop: sp.lg }}>
+        <TileGrid ideal={3}>
+          <Tile
+            tone="violet"
+            tag={busy === 'camera' ? 'Working' : Platform.OS === 'web' ? 'Photo' : 'Camera'}
+            title="Snap a receipt"
+            subtitle={ocr.configured ? `Read by ${ocr.name}` : 'Stored and searchable'}
+            glyph="📸"
+            index={0}
+            onPress={() => runCapture('camera')}
+          />
+          <Tile
+            tone="pink"
+            tag="Fastest"
+            title="Add manually"
+            subtitle="Amount, merchant, done"
+            glyph="✏️"
+            index={1}
+            onPress={() => router.push('/transaction/new')}
+          />
+          <Tile
+            tone="green"
+            tag="PDF · Excel"
+            title="Bank statement"
+            subtitle="A whole month at once, checked against the bank's own totals"
+            glyph="📄"
+            index={2}
+            onPress={() => router.push('/import')}
+          />
+          <Tile
+            tone="teal"
+            tag={
+              batchBusy
+                ? batchBusy.total > 0
+                  ? `${batchBusy.done}/${batchBusy.total}`
+                  : 'Opening'
+                : 'Up to 20'
+            }
+            title="Scan several"
+            subtitle="Read together, confirmed on one screen before anything saves"
+            glyph="🗂️"
+            index={3}
+            onPress={() => void runBatch()}
+          />
+          <Tile
+            tone="blue"
+            tag={busy === 'library' ? 'Working' : 'Photos'}
+            title="From your photos"
+            subtitle="A receipt you already saved"
+            glyph="🖼️"
+            index={4}
+            onPress={() => runCapture('library')}
+          />
+          <Tile
+            tone="amber"
+            tag={
+              gmailReady ? 'Connected' : gmailConfigured() ? 'Set up' : 'Needs client ID'
+            }
+            title="Gmail"
+            subtitle={gmailReady ? 'Sync bank alerts and receipts' : 'Read-only inbox scan'}
+            glyph="📧"
+            index={5}
+            onPress={() => router.push(gmailReady ? '/review' : '/settings')}
+          />
+        </TileGrid>
+      </View>
+
+      {/* The one piece of copy that earns trust rather than describing a
+          button, so it survives the move to tiles. */}
+      <Banner
         tone="blue"
-        title="Import from photos"
-        body="Pick a receipt you already saved and process it the same way."
-        action="Choose image"
-        busy={busy === 'library'}
-        onPress={() => runCapture('library')}
-      />
-
-      <Method
-        icon="albums-outline"
-        tone="teal"
-        title="Scan several at once"
-        body="Select up to 20 receipts. Each one is read, then you confirm the whole batch on one screen before anything is saved."
-        badge={{ label: 'Batch', tone: 'accent' as const }}
-        action={
-          batchBusy
-            ? batchBusy.total > 0
-              ? `Reading ${batchBusy.done} of ${batchBusy.total}…`
-              : 'Opening picker…'
-            : 'Choose receipts'
-        }
-        busy={!!batchBusy}
-        onPress={() => void runBatch()}
-      />
-
-      <Method
-        icon="mail-outline"
-        tone="amber"
-        title="Connect Gmail"
-        body="Read-only. Scans only bank alerts and merchant receipts, files them automatically, and never sends mail."
-        badge={
-          gmailReady
-            ? { label: 'Connected', tone: 'good' as const }
-            : gmailConfigured()
-              ? { label: 'Ready to connect', tone: 'accent' as const }
-              : { label: 'Needs a Google client ID', tone: 'warning' as const }
-        }
-        action={gmailReady ? 'Sync now' : 'Set up in Settings'}
-        onPress={() => router.push(gmailReady ? '/review' : '/settings')}
-      />
-
-      <Method
-        icon="document-text-outline"
-        tone="green"
-        title="Import a bank statement"
-        body="A whole month at once. PDF, Excel or CSV from your bank app — Finlo files what it recognises and only asks about the rest."
-        badge={{ label: 'PDF · Excel · CSV', tone: 'accent' as const }}
-        action="Choose a statement"
-        onPress={() => router.push('/import')}
+        glyph="🔒"
+        title="Nothing leaves this phone without you"
+        body="Gmail access is read-only and scans only bank alerts and merchant receipts. Finlo never sends mail, and receipts stay on the device."
+        style={{ marginTop: sp.md }}
       />
 
     </ScrollView>
-  );
-}
-
-function Method({
-  icon,
-  tone = 'violet',
-  title,
-  body,
-  action,
-  onPress,
-  busy,
-  primary,
-  badge,
-}: {
-  icon: React.ComponentProps<typeof Ionicons>['name'];
-  /** Each way in gets its own colour, so the list reads as choices. */
-  tone?: TileTone;
-  title: string;
-  body: string;
-  action: string;
-  onPress: () => void;
-  busy?: boolean;
-  primary?: boolean;
-  badge?: { label: string; tone: 'good' | 'warning' | 'accent' | 'neutral' };
-}) {
-  const { c, type: t, space: sp } = useTheme();
-  return (
-    <Card style={{ marginTop: sp.lg }}>
-      <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
-        <View
-          style={{
-            width: 42,
-            height: 42,
-            borderRadius: 21,
-            alignItems: 'center',
-            justifyContent: 'center',
-            backgroundColor: c.tile[tone].bg,
-            borderWidth: StyleSheet.hairlineWidth,
-            borderColor: c.tile[tone].border,
-            marginRight: sp.md,
-          }}
-        >
-          <Ionicons name={icon} size={20} color={c.tile[tone].tag} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
-            <Text style={[t.heading, { color: c.textPrimary, marginRight: sp.sm }]}>{title}</Text>
-            {badge ? <Pill label={badge.label} tone={badge.tone} /> : null}
-          </View>
-          <Text style={[t.body, { color: c.textSecondary, marginTop: sp.xs }]}>{body}</Text>
-          <View style={{ marginTop: sp.lg }}>
-            {busy ? (
-              <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 48 }}>
-                <ActivityIndicator color={c.accent} />
-                <Text style={[t.caption, { color: c.textMuted, marginLeft: sp.md }]}>
-                  Reading the receipt…
-                </Text>
-              </View>
-            ) : (
-              <Button label={action} onPress={onPress} />
-            )}
-          </View>
-        </View>
-      </View>
-    </Card>
   );
 }

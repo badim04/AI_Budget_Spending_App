@@ -13,6 +13,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { useLayout } from '../../src/theme/layout';
+import { Grid } from '../../src/components/ui/Screen';
+import { StatRow, StatTile } from '../../src/components/ui/Tiles';
+import { Spot } from '../../src/components/art/Spot';
 import { AmountText, Button, Card, Pill, SectionHeader } from '../../src/components/ui/Primitives';
 import { useAppStore } from '../../src/store/useAppStore';
 import { DateField } from '../../src/components/ui/DateField';
@@ -44,6 +47,33 @@ export default function GoalsScreen() {
   const active = useMemo(() => goals.filter((g) => !g.archived), [goals]);
 
   const [composing, setComposing] = useState(false);
+
+  /**
+   * The goals, totalled once.
+   *
+   * `perMonthMinor` sums only the goals that carry a target date, because a
+   * goal with no deadline has no monthly cost — folding it in as zero would
+   * quietly understate what the dated ones actually require each month.
+   */
+  const totals = useMemo(() => {
+    let savedMinor = 0;
+    let targetMinor = 0;
+    let perMonthMinor = 0;
+    for (const goal of active) {
+      savedMinor += goal.savedMinor;
+      targetMinor += goal.targetMinor;
+      const remaining = Math.max(0, goal.targetMinor - goal.savedMinor);
+      if (!goal.targetDate || remaining === 0) continue;
+      const months = Math.max(0, daysBetween(asOf, goal.targetDate)) / 30.44;
+      if (months > 0) perMonthMinor += Math.ceil(remaining / months);
+    }
+    return {
+      savedMinor,
+      targetMinor,
+      remainingMinor: Math.max(0, targetMinor - savedMinor),
+      perMonthMinor,
+    };
+  }, [active, asOf]);
 
   return (
     <ScrollView
@@ -90,6 +120,50 @@ export default function GoalsScreen() {
         </Card>
       ) : null}
 
+      {/*
+        Three figures before the goals themselves.
+
+        A column of goal cards makes you add them up in your head to answer the
+        only question you arrived with — how far along am I overall. The strip
+        answers it once, from the same numbers the cards carry.
+      */}
+      {active.length > 0 && !composing ? (
+        <View style={{ marginTop: sp.lg }}>
+          <StatRow>
+            <StatTile
+              index={0}
+              label="Saved"
+              value={formatMoney(money(totals.savedMinor, currency), { compactDecimals: true })}
+              caption={`${active.length} goal${active.length === 1 ? '' : 's'}`}
+            />
+            <StatTile
+              index={1}
+              label="Target"
+              value={formatMoney(money(totals.targetMinor, currency), { compactDecimals: true })}
+              caption={
+                totals.targetMinor > 0
+                  ? `${Math.round((totals.savedMinor / totals.targetMinor) * 100)}% there`
+                  : 'Nothing set'
+              }
+            />
+            <StatTile
+              index={2}
+              label="To go"
+              value={formatMoney(money(totals.remainingMinor, currency), { compactDecimals: true })}
+              tone={totals.remainingMinor === 0 ? 'green' : undefined}
+              caption={
+                totals.perMonthMinor > 0
+                  ? `${formatMoney(money(totals.perMonthMinor, currency), { compactDecimals: true })} a month`
+                  : 'No dated goals'
+              }
+            />
+          </StatRow>
+        </View>
+      ) : null}
+
+      {/* Two across on a phone, three on a desktop. A goal is a thing you are
+          working toward, not a row in a ledger. */}
+      <Grid ideal={3}>
       {active.map((goal) => (
         <GoalCard
           key={goal.id}
@@ -113,6 +187,7 @@ export default function GoalsScreen() {
           }}
         />
       ))}
+      </Grid>
     </ScrollView>
   );
 }
@@ -146,11 +221,22 @@ function GoalCard({
   const overdue = goal.targetDate != null && goal.targetDate < asOf && !done;
 
   return (
-    <Card style={{ marginTop: sp.lg }}>
+    <Card style={{ marginTop: sp.sm, overflow: 'hidden' }}>
+      {/* A drawing behind the card, at the weight of a watermark.
+          `Spot` takes a tile tone and recolours to it, so a goal card is a
+          picture of a target rather than another bordered rectangle — and
+          because it is a vector it costs nothing and works in both themes. */}
+      <View
+        pointerEvents="none"
+        style={{ position: 'absolute', right: -18, top: -10, opacity: 0.1 }}
+      >
+        <Spot name={done ? 'sparkles' : 'target'} size={104} tone="violet" />
+      </View>
+
       <View style={styles.spread}>
         <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-          <Text style={{ fontSize: 20, marginRight: sp.sm }}>{goal.icon || '🎯'}</Text>
-          <Text style={[t.heading, { color: c.textPrimary, flex: 1 }]} numberOfLines={1}>
+          <Text style={{ fontSize: 18, marginRight: sp.sm }}>{goal.icon || '🎯'}</Text>
+          <Text style={[t.bodyStrong, { color: c.textPrimary, flex: 1 }]} numberOfLines={1}>
             {goal.name}
           </Text>
         </View>
@@ -159,9 +245,9 @@ function GoalCard({
         </Pressable>
       </View>
 
-      <View style={[styles.spread, { marginTop: sp.md, alignItems: 'flex-end' }]}>
+      <View style={{ marginTop: sp.md }}>
         <AmountText value={money(goal.savedMinor, goal.currency)} size="title" />
-        <Text style={[t.caption, { color: c.textMuted }]}>
+        <Text style={[t.micro, { color: c.textMuted, marginTop: 2 }]}>
           of {formatMoney(money(goal.targetMinor, goal.currency), { compactDecimals: true })}
         </Text>
       </View>
@@ -208,7 +294,7 @@ function GoalCard({
       </View>
 
       {!done ? (
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: sp.lg }}>
+        <View style={{ marginTop: sp.lg }}>
           <TextInput
             value={amountText}
             onChangeText={setAmountText}
@@ -223,12 +309,13 @@ function GoalCard({
               paddingHorizontal: sp.md,
               paddingVertical: sp.md,
               fontSize: 15,
-              marginRight: sp.sm,
+              marginBottom: sp.sm,
             }}
           />
           <Button
             label="Add"
             variant="secondary"
+            size="sm"
             onPress={() => {
               const parsed = parseMoney(amountText, goal.currency);
               if (!parsed || parsed.minor <= 0) {

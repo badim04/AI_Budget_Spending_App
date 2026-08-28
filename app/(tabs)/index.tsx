@@ -27,6 +27,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { useLayout } from '../../src/theme/layout';
+import { Split } from '../../src/components/ui/Screen';
 import { AmountText, BudgetBar, Card, Pill, SectionHeader } from '../../src/components/ui/Primitives';
 import { SpendTrendChart } from '../../src/components/charts/SpendTrendChart';
 import { CategoryBreakdown } from '../../src/components/charts/CategoryBreakdown';
@@ -88,9 +89,18 @@ export default function DashboardScreen() {
   // Measured from the container, not the window: the window width ignores the
   // side rail, which pushed the left edge of the screen underneath it.
   const [measuredWidth, setMeasuredWidth] = React.useState(0);
-  const contentWidth = Math.min(measuredWidth || width, 560);
-  const gutter = sp.lg;
-  const chartWidth = contentWidth - gutter * 2 - sp.lg * 2;
+  const contentWidth = Math.min(measuredWidth || width, layout.maxWidth);
+  const gutter = layout.gutter;
+  /**
+   * The chart's own width.
+   *
+   * On a desktop the trend sits in the wide half of a split rather than across
+   * the page, so it has to be measured against that share or it draws off the
+   * end of its own card.
+   */
+  const chartWidth =
+    (layout.isDesktop ? (contentWidth - gutter * 2) * 0.62 - sp.lg : contentWidth - gutter * 2) -
+    sp.lg * 2;
 
 
   const progress = periodProgress(range, data.asOf);
@@ -411,10 +421,30 @@ export default function DashboardScreen() {
         />
       </TileGrid>
 
-      {/* ------------------------------------------------- 2. Am I on track? */}
-      {/* Without a budget this card is the hero figure printed twice under a
-          pace bar with nothing to pace against, so it does not appear. */}
-      {budgeted ? (
+      {/*
+        ------------------------------- 2 & 3. Am I on track, and what is coming?
+
+        Two questions that are read together and used to be a screen apart. On a
+        desktop the trend chart takes the wide half and the envelopes the narrow
+        one, so "am I ahead of pace" and "where is that heading" are one glance.
+        On a phone they stack in the same order they always did.
+      */}
+      <Split ratio={0.62}>
+        <View>
+          <SectionHeader title="Trend & forecast" action="Details" />
+          <Card>
+            <SpendTrendChart
+              actual={data.trend}
+              forecast={data.forecast}
+              width={chartWidth}
+              target={data.allocated}
+            />
+          </Card>
+        </View>
+
+        <View>
+          <SectionHeader title={budgeted ? 'Against budget' : 'Budgets'} />
+          {budgeted ? (
       <Card padded={false}>
         <View style={{ padding: sp.lg }}>
           <View style={styles.spread}>
@@ -482,18 +512,24 @@ export default function DashboardScreen() {
           ))}
         </View>
       </Card>
-      ) : null}
-
-      {/* ------------------------------------------------ 3. What is coming? */}
-      <SectionHeader title="Trend & forecast" action="Details" />
-      <Card>
-        <SpendTrendChart
-          actual={data.trend}
-          forecast={data.forecast}
-          width={chartWidth}
-          target={data.allocated}
-        />
-      </Card>
+          ) : (
+            <Card>
+              <Text style={[t.caption, { color: c.textSecondary }]}>
+                No envelopes yet. A budget is what turns the trend above into
+                "am I ahead or behind" rather than just a shape.
+              </Text>
+              <View style={{ marginTop: sp.md }}>
+                <Button
+                  label="Set one up"
+                  variant="secondary"
+                  size="sm"
+                  onPress={() => router.push('/budgets')}
+                />
+              </View>
+            </Card>
+          )}
+        </View>
+      </Split>
 
       {data.upcoming.length > 0 ? (
         <>
@@ -544,17 +580,26 @@ export default function DashboardScreen() {
         </>
       ) : null}
 
-      {/* --------------------------------------------- 4. Where did it go? */}
-      <SectionHeader title="Where it went" action="Breakdown" />
-      <Card>
-        <CategoryBreakdown
-          rows={data.categories}
-          grid
-          onSelect={(_, row) => openCategory(row, range)}
-        />
-      </Card>
+      {/*
+        ---------------------------- 4 & 5. Where did it go, and what should I know?
 
-      {/* --------------------------------- 5. Anything I should know about? */}
+        The breakdown is the evidence and the insights are the reading of it, so
+        on a desktop they sit beside each other. Stacked, the reader has scrolled
+        past the numbers by the time they meet the sentence about them.
+      */}
+      <Split ratio={0.55}>
+        <View>
+          <SectionHeader title="Where it went" action="Breakdown" />
+          <Card>
+            <CategoryBreakdown
+              rows={data.categories}
+              grid
+              onSelect={(_, row) => openCategory(row, range)}
+            />
+          </Card>
+        </View>
+
+        <View>
       {data.insights.length > 0 ? (
         <>
           <SectionHeader title="Worth knowing" />
@@ -589,6 +634,8 @@ export default function DashboardScreen() {
           ))}
         </>
       ) : null}
+        </View>
+      </Split>
 
       {data.staleCurrencies.length > 0 ? (
         <Card style={{ marginTop: sp.lg }}>

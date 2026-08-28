@@ -60,11 +60,34 @@ export type TileTone = 'violet' | 'blue' | 'teal' | 'green' | 'amber' | 'pink';
 export function HeroCarousel({ children }: { children: React.ReactNode }) {
   const { c, space: sp } = useTheme();
   const { width } = useWindowDimensions();
+  const layout = useLayout();
   const [page, setPage] = useState(0);
 
   const slides = React.Children.toArray(children).filter(Boolean);
+
+  /**
+   * A deck on a phone, a row on a desktop.
+   *
+   * Paging exists because a phone has room for one big figure at a time, and
+   * swiping is how you ask for the next one. Neither half of that is true with
+   * a mouse: there is room for all three, and a horizontal swipe is a gesture
+   * a trackpad user has to discover. Showing one card and hiding two behind an
+   * interaction nobody performs is worse than the static block this replaced.
+   */
+  if (layout.isDesktop && slides.length > 1) {
+    return (
+      <View style={{ flexDirection: 'row', marginHorizontal: -sp.md / 2 }}>
+        {slides.map((slide, i) => (
+          <View key={i} style={{ flex: 1, paddingHorizontal: sp.md / 2 }}>
+            {slide}
+          </View>
+        ))}
+      </View>
+    );
+  }
+
   // The scroller is edge-to-edge; the card inside keeps the page gutter.
-  const pageWidth = Math.min(width, 560) - sp.lg * 2;
+  const pageWidth = Math.min(width, layout.maxWidth) - layout.gutter * 2;
 
   const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const next = Math.round(e.nativeEvent.contentOffset.x / Math.max(1, pageWidth));
