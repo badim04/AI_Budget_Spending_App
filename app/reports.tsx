@@ -22,6 +22,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useTheme } from '../src/theme/ThemeProvider';
+import { useLayout } from '../src/theme/layout';
 import { Tile, TileGrid } from '../src/components/ui/Tiles';
 import { AmountText, Button, Card, Pill } from '../src/components/ui/Primitives';
 import { useAppStore } from '../src/store/useAppStore';
@@ -57,6 +58,7 @@ function notify(title: string, message?: string) {
 export default function ReportsScreen() {
   const { c, type: t, space: sp, radius: r } = useTheme();
   const insets = useSafeAreaInsets();
+  const layout = useLayout();
 
   const transactions = useAppStore((s) => s.transactions);
   const categories = useAppStore((s) => s.categories);
@@ -115,9 +117,9 @@ export default function ReportsScreen() {
       contentContainerStyle={{
         paddingTop: insets.top + sp.lg,
         paddingBottom: insets.bottom + sp.xxl,
-        paddingHorizontal: sp.lg,
+        paddingHorizontal: layout.gutter,
         width: '100%',
-        maxWidth: 560,
+        maxWidth: layout.maxWidth,
         alignSelf: 'center',
       }}
     >

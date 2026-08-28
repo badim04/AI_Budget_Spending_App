@@ -23,9 +23,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useTheme } from '../../src/theme/ThemeProvider';
+import { useLayout } from '../../src/theme/layout';
 import { Button } from '../../src/components/ui/Primitives';
 import { SettingsGroup, SettingsRow } from '../../src/components/ui/SettingsList';
 import { StatRow, StatTile, Tile, TileGrid } from '../../src/components/ui/Tiles';
+import { Grid } from '../../src/components/ui/Screen';
 import { Spot } from '../../src/components/art/Spot';
 import { useAppStore } from '../../src/store/useAppStore';
 import { pingLlm } from '../../src/ingest/llm';
@@ -71,6 +73,7 @@ async function confirm(title: string, message: string): Promise<boolean> {
 export default function SettingsScreen() {
   const { c, type: t, space: sp, radius: r } = useTheme();
   const insets = useSafeAreaInsets();
+  const layout = useLayout();
 
   const settings = useAppStore((s) => s.settings);
   const accounts = useAppStore((s) => s.accounts);
@@ -150,8 +153,8 @@ export default function SettingsScreen() {
       contentContainerStyle={{
         paddingTop: insets.top + sp.lg,
         paddingBottom: insets.bottom + sp.xxl,
-        paddingHorizontal: sp.lg,
-        maxWidth: 620,
+        paddingHorizontal: layout.gutter,
+        maxWidth: layout.maxWidth,
         width: '100%',
         alignSelf: 'center',
       }}
@@ -320,14 +323,15 @@ export default function SettingsScreen() {
             </Text>
           </View>
         ) : (
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', padding: sp.md }}>
-            {accounts.map((a, i) => {
+          <View style={{ padding: sp.md }}>
+            <Grid ideal={4}>
+              {accounts.map((a, i) => {
               const tones = ['blue', 'violet', 'teal', 'green', 'amber', 'pink'] as const;
               const tone = c.tile[tones[i % tones.length]];
               const balance = accountBalance(a, transactions, today());
 
               return (
-                <View key={a.id} style={{ width: '50%', padding: sp.sm / 2 }}>
+                <View key={a.id}>
                   <View
                     style={{
                       backgroundColor: tone.bg,
@@ -360,7 +364,8 @@ export default function SettingsScreen() {
                   </View>
                 </View>
               );
-            })}
+              })}
+            </Grid>
           </View>
         )}
 

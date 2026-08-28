@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../src/theme/ThemeProvider';
+import { useLayout } from '../../src/theme/layout';
 import { AmountText, Card, SectionHeader } from '../../src/components/ui/Primitives';
 import { CategoryBreakdown } from '../../src/components/charts/CategoryBreakdown';
 import { Ring, RingLegend, type RingSlice } from '../../src/components/charts/Ring';
@@ -92,6 +93,7 @@ function ModeChip({
 export default function InsightsScreen() {
   const { c, type: t, space: sp } = useTheme();
   const insets = useSafeAreaInsets();
+  const layout = useLayout();
   const { width } = useWindowDimensions();
   const transactions = useAppStore((s) => s.transactions);
   const categories = useAppStore((s) => s.categories);
@@ -207,12 +209,12 @@ export default function InsightsScreen() {
       contentContainerStyle={{
         paddingTop: insets.top + sp.lg,
         paddingBottom: insets.bottom + 80,
-        paddingHorizontal: sp.lg,
+        paddingHorizontal: layout.gutter,
         alignSelf: 'center',
         // '100%' + maxWidth respects the parent; Math.min(window, 560) did not,
         // so on a phone the content overflowed under the nav rail.
         width: '100%',
-        maxWidth: 560,
+        maxWidth: layout.maxWidth,
       }}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>

@@ -14,6 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '../../src/theme/ThemeProvider';
+import { columnsFor, useLayout } from '../../src/theme/layout';
 import { useEnter, usePressScale } from '../../src/theme/motion';
 import { AmountText, Pill, Button } from '../../src/components/ui/Primitives';
 import { CategorySheet } from '../../src/components/CategorySheet';
@@ -83,6 +84,9 @@ const GROUP_MODES: Array<{ value: GroupMode | 'off'; label: string }> = [
 export default function TransactionsScreen() {
   const { c, type: t, space: sp, radius: r } = useTheme();
   const insets = useSafeAreaInsets();
+  const layout = useLayout();
+  /** Two across on a phone, four on a desktop. */
+  const queueColumns = columnsFor(layout, 4);
   /**
    * Arrived from a tap on the spending breakdown.
    *
@@ -353,8 +357,27 @@ export default function TransactionsScreen() {
   const pickingSiblings = picking ? siblingsOf(picking) : [];
 
   return (
-    <View style={{ flex: 1, backgroundColor: c.canvas, paddingTop: insets.top + sp.md }}>
-      <View style={{ paddingHorizontal: sp.lg, paddingBottom: sp.md }}>
+    <View style={{ flex: 1, backgroundColor: c.canvas }}>
+      {/*
+        The canvas runs edge to edge; the content does not.
+
+        This screen is a list rather than a scroll view, so it never had the
+        maxWidth every other page carried — on a desktop that meant transaction
+        rows 1900pt wide, with the merchant at one end and the amount at the
+        other and nothing pairing them. The outer view keeps the background
+        full-bleed so the page still fills the window; the inner one holds the
+        readable column.
+      */}
+      <View
+        style={{
+          flex: 1,
+          width: '100%',
+          maxWidth: layout.maxWidth,
+          alignSelf: 'center',
+          paddingTop: insets.top + sp.md,
+        }}
+      >
+      <View style={{ paddingHorizontal: layout.gutter, paddingBottom: sp.md }}>
         {focused ? (
           <Pressable
             onPress={() => router.setParams({ category: '', from: '', to: '', label: '' })}
@@ -581,17 +604,27 @@ export default function TransactionsScreen() {
             pick between, and twice as many fit above the fold — which on a
             sixty-nine row queue is the difference between scrolling and seeing.
           */
-          numColumns={2}
+          numColumns={queueColumns}
+          /* FlatList builds its cell structure once per numColumns, so it has
+             to be remounted when the window crosses a breakpoint. Without the
+             key it keeps the old column count and the rows overlap. */
+          key={`queue-${queueColumns}`}
           columnWrapperStyle={{ marginHorizontal: -sp.sm / 2 }}
           contentContainerStyle={{
-            paddingHorizontal: sp.lg,
+            paddingHorizontal: layout.gutter,
             paddingBottom: insets.bottom + 96,
           }}
           renderItem={({ item, index }) => (
             // maxWidth caps the last card when the count is odd. With flex
             // alone a lone final group stretched to the full width and stopped
             // looking like a member of the grid it belongs to.
-            <View style={{ flex: 1, maxWidth: '50%', paddingHorizontal: sp.sm / 2 }}>
+            <View
+              style={{
+                flex: 1,
+                maxWidth: `${100 / queueColumns}%`,
+                paddingHorizontal: sp.sm / 2,
+              }}
+            >
               <GroupCard
                 group={item}
                 index={index}
@@ -632,7 +665,7 @@ export default function TransactionsScreen() {
             <View
               style={{
                 backgroundColor: c.canvas,
-                paddingHorizontal: sp.lg,
+                paddingHorizontal: layout.gutter,
                 paddingVertical: sp.sm,
                 flexDirection: 'row',
                 alignItems: 'center',
@@ -667,7 +700,11 @@ export default function TransactionsScreen() {
                 }
                 style={({ pressed }) => [
                   styles.row,
-                  { paddingHorizontal: sp.lg, paddingVertical: sp.md, opacity: pressed ? 0.6 : 1 },
+                  {
+                    paddingHorizontal: layout.gutter,
+                    paddingVertical: sp.md,
+                    opacity: pressed ? 0.6 : 1,
+                  },
                 ]}
                 accessibilityRole="button"
                 accessibilityLabel={`${item.merchant}, ${category?.name ?? 'uncategorised'}`}
@@ -770,6 +807,8 @@ export default function TransactionsScreen() {
           }}
         />
       ) : null}
+
+      </View>
 
       {/* Floating add button — the action people take most often. */}
       <Pressable

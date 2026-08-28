@@ -54,25 +54,39 @@ export const OTHER_SERIES = { light: '#8a8880', dark: '#6f6d66' };
 const dark = {
   mode: 'dark' as ThemeMode,
 
-  // Surfaces climb toward the viewer: canvas -> card -> raised.
-  // A trace of violet in the neutrals, so the accent sits in the same family
-  // as the surfaces instead of on top of them.
-  canvas: '#0c0a14',
-  surface: '#15121f',
-  surfaceRaised: '#1d1929',
-  surfaceSunken: '#09070f',
+  /**
+   * Deep navy, not violet-black (v1.2).
+   *
+   * The dark ramp used to be a near-black with violet mixed in, chosen so the
+   * purple accent sat in the same family as the surfaces. It worked, and it
+   * also read as "an app with the lights off". The reference set this release
+   * is built against is unambiguous about the alternative: a deep blue night
+   * mode, where the canvas has a colour of its own rather than being an absence
+   * of one, and every card is a legible step up from it.
+   *
+   * Blue rather than any other hue because it is the one that can carry both
+   * halves of the palette — the violet accent stays in family, and the green
+   * and amber of the status colours read as *on* the surface instead of
+   * fighting it, which a warm dark ground cannot do.
+   *
+   * Surfaces climb toward the viewer: canvas -> card -> raised.
+   */
+  canvas: '#080d1c',
+  surface: '#101728',
+  surfaceRaised: '#182036',
+  surfaceSunken: '#050912',
   /** Behind sheets and modals. */
-  scrim: 'rgba(3, 5, 8, 0.72)',
+  scrim: 'rgba(2, 5, 12, 0.74)',
 
-  border: '#292339',
-  borderStrong: '#3a3350',
+  border: '#1f2942',
+  borderStrong: '#2e3a58',
   /** Hairline on top of a coloured fill, to keep adjacent marks separate. */
-  markGap: '#15121f',
+  markGap: '#101728',
 
-  textPrimary: '#f4f2fb',
-  textSecondary: '#a9a3c0',
-  textMuted: '#736d8a',
-  textInverse: '#0c0a14',
+  textPrimary: '#f2f5fc',
+  textSecondary: '#a3aec9',
+  textMuted: '#6d7996',
+  textInverse: '#080d1c',
 
   /** The single brand accent. Used for the primary action and nothing else. */
   /**
@@ -86,11 +100,12 @@ const dark = {
    */
   accent: '#8b6cff',
   accentPressed: '#7454e6',
-  accentSubtle: 'rgba(139, 108, 255, 0.16)',
-  onAccent: '#12082e',
+  accentSubtle: 'rgba(139, 108, 255, 0.18)',
+  onAccent: '#0b0620',
 
-  /** Soft lavender: the accent at reading weight, for large tinted areas. */
-  accentSoft: '#2a2145',
+  /** The accent at reading weight, for large tinted areas. Now a blue-violet,
+   *  so a tinted panel sits on the navy ground rather than floating over it. */
+  accentSoft: '#221f45',
 
   // Status. Reserved — never reused as a series colour.
   good: '#2fbe7e',
@@ -105,10 +120,10 @@ const dark = {
   /** Money direction. Deliberately not the same greens/reds as status, so
    *  "an outflow" never reads as "something is wrong". */
   inflow: '#3ecf8e',
-  outflow: '#f0f2f6',
+  outflow: '#eef2fa',
 
-  grid: '#221d31',
-  axis: '#302949',
+  grid: '#1a2338',
+  axis: '#26314c',
 
   series: SERIES_DARK,
   otherSeries: OTHER_SERIES.dark,
@@ -179,23 +194,25 @@ const dark = {
 const light: typeof dark = {
   mode: 'light',
 
-  // Very light lavender rather than plain grey: the canvas belongs to the
-  // brand too, and a neutral one makes white cards look like paper on a table.
-  canvas: '#f7f5ff',
+  // A cool near-white rather than lavender (v1.2). The old canvas carried
+  // enough violet to tint every white card sitting on it; the light designs
+  // this release follows keep the ground almost neutral and let the colour
+  // come from the content — the donut, the category chips, the accent button.
+  canvas: '#f6f7fb',
   surface: '#ffffff',
   surfaceRaised: '#ffffff',
-  surfaceSunken: '#f0ecfd',
-  scrim: 'rgba(20, 16, 40, 0.40)',
+  surfaceSunken: '#eef0f7',
+  scrim: 'rgba(12, 18, 36, 0.40)',
 
-  border: '#e9e4f8',
-  borderStrong: '#cdc4e6',
+  border: '#e6e9f2',
+  borderStrong: '#c8cee0',
   markGap: '#ffffff',
 
   // Deep navy, not black: pure black on white is harsh at body size and reads
   // as a wireframe. This keeps the violet family without tinting the text.
-  textPrimary: '#1a1c3d',
-  textSecondary: '#4a4a70',
-  textMuted: '#807ba0',
+  textPrimary: '#111834',
+  textSecondary: '#48536f',
+  textMuted: '#7b849c',
   textInverse: '#ffffff',
 
   accent: '#6c4dff',
@@ -203,8 +220,8 @@ const light: typeof dark = {
   accentSubtle: 'rgba(108, 77, 255, 0.10)',
   onAccent: '#ffffff',
 
-  /** Soft lavender: large tinted areas that must stay readable. */
-  accentSoft: '#efeaff',
+  /** Large tinted areas that must stay readable. */
+  accentSoft: '#eeeaff',
 
   good: '#0f9d63',
   goodSubtle: 'rgba(15, 157, 99, 0.10)',
@@ -216,10 +233,10 @@ const light: typeof dark = {
   infoSubtle: 'rgba(42, 120, 214, 0.10)',
 
   inflow: '#0f8f5a',
-  outflow: '#12142a',
+  outflow: '#111834',
 
-  grid: '#efebfb',
-  axis: '#d9d2ee',
+  grid: '#eef0f7',
+  axis: '#d5dae8',
 
   series: SERIES_LIGHT,
   otherSeries: OTHER_SERIES.light,

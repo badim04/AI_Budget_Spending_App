@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useTheme } from '../src/theme/ThemeProvider';
+import { useLayout } from '../src/theme/layout';
 import { Spot } from '../src/components/art/Spot';
 import { AmountText, Button, Card, Pill } from '../src/components/ui/Primitives';
 import { useAppStore } from '../src/store/useAppStore';
@@ -32,6 +33,7 @@ function notify(title: string, message?: string) {
 export default function ReviewScreen() {
   const { c, type: t, space: sp } = useTheme();
   const insets = useSafeAreaInsets();
+  const layout = useLayout();
 
   // Select the raw array and narrow it in useMemo. A selector like
   // `s.accounts.filter(...)` builds a NEW array on every call, so zustand v5's
@@ -125,8 +127,8 @@ export default function ReviewScreen() {
       contentContainerStyle={{
         paddingTop: insets.top + sp.lg,
         paddingBottom: insets.bottom + sp.xxl,
-        paddingHorizontal: sp.lg,
-        maxWidth: 620,
+        paddingHorizontal: layout.gutter,
+        maxWidth: layout.maxWidth,
         width: '100%',
         alignSelf: 'center',
       }}

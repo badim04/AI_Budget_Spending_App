@@ -27,6 +27,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '../../src/theme/ThemeProvider';
+import { useLayout } from '../../src/theme/layout';
 import { Button, Card } from '../../src/components/ui/Primitives';
 import { DateField } from '../../src/components/ui/DateField';
 import { useAppStore } from '../../src/store/useAppStore';
@@ -37,6 +38,7 @@ import { tabularNumbers } from '../../src/theme/tokens';
 export default function TransactionFormScreen() {
   const { c, type: t, space: sp, radius: r } = useTheme();
   const insets = useSafeAreaInsets();
+  const layout = useLayout();
   const params = useLocalSearchParams<{
     id?: string;
     receiptId?: string;
@@ -179,8 +181,8 @@ export default function TransactionFormScreen() {
         contentContainerStyle={{
           paddingTop: insets.top + sp.lg,
           paddingBottom: insets.bottom + sp.huge,
-          paddingHorizontal: sp.lg,
-          maxWidth: 560,
+          paddingHorizontal: layout.gutter,
+          maxWidth: layout.maxWidth,
           width: '100%',
           alignSelf: 'center',
         }}

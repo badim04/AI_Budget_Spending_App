@@ -30,6 +30,7 @@ import { router } from 'expo-router';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
 import { useTheme } from '../src/theme/ThemeProvider';
+import { useLayout } from '../src/theme/layout';
 import { AmountText, Button, Card, Pill } from '../src/components/ui/Primitives';
 import { FeatureCard, FeaturePill } from '../src/components/ui/FeatureCard';
 import { DateField } from '../src/components/ui/DateField';
@@ -98,6 +99,7 @@ function base64ToBytes(b64: string): Uint8Array {
 export default function ImportScreen() {
   const { c, type: t, space: sp, radius: r } = useTheme();
   const insets = useSafeAreaInsets();
+  const layout = useLayout();
 
   const allAccounts = useAppStore((s) => s.accounts);
   const accounts = useMemo(() => allAccounts.filter((a) => !a.archived), [allAccounts]);
@@ -408,8 +410,8 @@ export default function ImportScreen() {
       contentContainerStyle={{
         paddingTop: insets.top + sp.lg,
         paddingBottom: insets.bottom + sp.xxl,
-        paddingHorizontal: sp.lg,
-        maxWidth: 640,
+        paddingHorizontal: layout.gutter,
+        maxWidth: layout.maxWidth,
         width: '100%',
         alignSelf: 'center',
       }}

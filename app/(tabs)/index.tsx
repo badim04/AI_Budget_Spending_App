@@ -26,6 +26,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../src/theme/ThemeProvider';
+import { useLayout } from '../../src/theme/layout';
 import { AmountText, BudgetBar, Card, Pill, SectionHeader } from '../../src/components/ui/Primitives';
 import { SpendTrendChart } from '../../src/components/charts/SpendTrendChart';
 import { CategoryBreakdown } from '../../src/components/charts/CategoryBreakdown';
@@ -64,6 +65,7 @@ export default function DashboardScreen() {
   const { c, type: t, space: sp, radius: r } = useTheme();
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
+  const layout = useLayout();
   /**
    * The month on screen. Everything below reads from it, so paging back shows
    * that month's budgets, forecast and breakdown rather than today's.
@@ -207,7 +209,7 @@ export default function DashboardScreen() {
         paddingHorizontal: gutter,
         alignSelf: 'center',
         width: '100%',
-        maxWidth: 560,
+        maxWidth: layout.maxWidth,
       }}
       refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} tintColor={c.textMuted} />}
     >

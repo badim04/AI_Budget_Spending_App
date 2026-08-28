@@ -12,6 +12,7 @@ import { ScrollView, View, Text, TextInput, Pressable, Platform, Alert, StyleShe
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../src/theme/ThemeProvider';
+import { useLayout } from '../../src/theme/layout';
 import { AmountText, Button, Card, Pill, SectionHeader } from '../../src/components/ui/Primitives';
 import { useAppStore } from '../../src/store/useAppStore';
 import { DateField } from '../../src/components/ui/DateField';
@@ -30,6 +31,7 @@ function notify(title: string, message?: string) {
 export default function GoalsScreen() {
   const { c, type: t, space: sp, radius: r } = useTheme();
   const insets = useSafeAreaInsets();
+  const layout = useLayout();
 
   const goals = useAppStore((s) => s.goals);
   const settings = useAppStore((s) => s.settings);
@@ -49,8 +51,8 @@ export default function GoalsScreen() {
       contentContainerStyle={{
         paddingTop: insets.top + sp.lg,
         paddingBottom: insets.bottom + sp.xxl,
-        paddingHorizontal: sp.lg,
-        maxWidth: 620,
+        paddingHorizontal: layout.gutter,
+        maxWidth: layout.maxWidth,
         width: '100%',
         alignSelf: 'center',
       }}

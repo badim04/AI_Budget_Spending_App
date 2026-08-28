@@ -28,6 +28,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '../src/theme/ThemeProvider';
+import { useLayout } from '../src/theme/layout';
 import { Spot } from '../src/components/art/Spot';
 import { Button, Card, Pill } from '../src/components/ui/Primitives';
 import { useAppStore } from '../src/store/useAppStore';
@@ -56,6 +57,7 @@ interface Draft {
 export default function BatchReceiptsScreen() {
   const { c, type: t, space: sp, radius: r } = useTheme();
   const insets = useSafeAreaInsets();
+  const layout = useLayout();
   const params = useLocalSearchParams<{ token?: string }>();
 
   const settings = useAppStore((s) => s.settings);
@@ -168,9 +170,9 @@ export default function BatchReceiptsScreen() {
         contentContainerStyle={{
           paddingTop: insets.top + sp.lg,
           paddingBottom: sp.huge + 80,
-          paddingHorizontal: sp.lg,
+          paddingHorizontal: layout.gutter,
           width: '100%',
-          maxWidth: 620,
+          maxWidth: layout.maxWidth,
           alignSelf: 'center',
         }}
       >

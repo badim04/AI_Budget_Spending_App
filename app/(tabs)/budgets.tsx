@@ -3,9 +3,11 @@ import { ScrollView, View, Text, Pressable, TextInput, StyleSheet } from 'react-
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../src/theme/ThemeProvider';
+import { useLayout } from '../../src/theme/layout';
 import { Spot } from '../../src/components/art/Spot';
 import { AmountText, BudgetBar, Button, Card, SectionHeader } from '../../src/components/ui/Primitives';
 import { StatRow, StatTile } from '../../src/components/ui/Tiles';
+import { Grid } from '../../src/components/ui/Screen';
 import { budgetStateColor, tabularNumbers } from '../../src/theme/tokens';
 import {
   allBudgetStatuses,
@@ -40,6 +42,7 @@ const STATE_LABEL: Record<string, string> = {
 export default function BudgetsScreen() {
   const { c, type: t, space: sp, radius: r } = useTheme();
   const insets = useSafeAreaInsets();
+  const layout = useLayout();
   const [editing, setEditing] = useState<string | null>(null);
   const [draftAmount, setDraftAmount] = useState('');
 
@@ -116,8 +119,8 @@ export default function BudgetsScreen() {
       contentContainerStyle={{
         paddingTop: insets.top + sp.lg,
         paddingBottom: insets.bottom + sp.xxl,
-        paddingHorizontal: sp.lg,
-        maxWidth: 620,
+        paddingHorizontal: layout.gutter,
+        maxWidth: layout.maxWidth,
         width: '100%',
         alignSelf: 'center',
       }}
@@ -265,14 +268,8 @@ export default function BudgetsScreen() {
             says whether that is too fast. That is the difference between a
             measurement and advice.
           */}
-          <View
-            style={{
-              flexDirection: 'row',
-              flexWrap: 'wrap',
-              marginHorizontal: -sp.sm / 2,
-            }}
-          >
-            {statuses.map((s, i) => {
+          <Grid ideal={4}>
+            {statuses.map((s) => {
               const exhaustion = projectedExhaustionDate(s);
               const carried = s.effectiveAllocated.minor - s.allocated.minor;
               const isEditing = editing === s.budget.id;
@@ -280,10 +277,7 @@ export default function BudgetsScreen() {
               const suggested = unset ? suggestAllocation(s.budget, ctx) : null;
 
               return (
-                <View
-                  key={s.budget.id}
-                  style={{ width: '50%', paddingHorizontal: sp.sm / 2, paddingBottom: sp.sm }}
-                >
+                <View key={s.budget.id}>
                   <View
                     style={{
                       backgroundColor: c.surface,
@@ -437,7 +431,7 @@ export default function BudgetsScreen() {
                 </View>
               );
             })}
-          </View>
+          </Grid>
         </>
       ) : null}
     </ScrollView>

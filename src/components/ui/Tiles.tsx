@@ -43,6 +43,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../theme/ThemeProvider';
 import { useEnter, usePressScale } from '../../theme/motion';
+import { columnsFor, useLayout } from '../../theme/layout';
 
 export type TileTone = 'violet' | 'blue' | 'teal' | 'green' | 'amber' | 'pink';
 
@@ -110,15 +111,39 @@ export function HeroCarousel({ children }: { children: React.ReactNode }) {
 
 // ------------------------------------------------------------------ tiles
 
-export function TileGrid({ children, gap }: { children: React.ReactNode; gap?: number }) {
+/**
+ * Two across on a phone, more when there is room.
+ *
+ * The count used to be a hardcoded 50%. That is right on a phone and wrong the
+ * moment the window is a laptop: four destination tiles in two columns at
+ * desktop width are 500pt wide each, which is not a tile, it is a banner
+ * wearing a tile's clothes. `columnsFor` gives 2 / 3 / 4 and never fewer than
+ * two, so the standing rule holds at the narrow end and the space gets used at
+ * the wide one.
+ */
+export function TileGrid({
+  children,
+  gap,
+  ideal = 4,
+}: {
+  children: React.ReactNode;
+  gap?: number;
+  /** Columns at full desktop width. */
+  ideal?: number;
+}) {
   const { space: sp } = useTheme();
+  const layout = useLayout();
   const g = gap ?? sp.md;
+  const cols = columnsFor(layout, ideal);
   const tiles = React.Children.toArray(children).filter(Boolean);
 
   return (
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -g / 2 }}>
       {tiles.map((tile, i) => (
-        <View key={i} style={{ width: '50%', paddingHorizontal: g / 2, paddingBottom: g }}>
+        <View
+          key={i}
+          style={{ width: `${100 / cols}%`, paddingHorizontal: g / 2, paddingBottom: g }}
+        >
           {tile}
         </View>
       ))}
