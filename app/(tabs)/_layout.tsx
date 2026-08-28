@@ -111,7 +111,16 @@ export default function SectionLayout() {
         }}
       />
 
-      {/* Real routes, deliberately absent from the bottom bar. */}
+      {/*
+        Real routes, deliberately absent from the bottom bar.
+
+        Analysis is a first-class page, not a lesser one — but a bottom bar with
+        six destinations gives each about 50pt, which is under the size a thumb
+        can reliably hit. It is reached from the track at the top of Insights,
+        which is one tap, and it has its own entry in the side rail where there
+        is room for it.
+      */}
+      <Tabs.Screen name="analysis" options={{ href: null, title: 'Analysis' }} />
       <Tabs.Screen name="goals" options={{ href: null, title: 'Goals' }} />
       <Tabs.Screen name="settings" options={{ href: null, title: 'Settings' }} />
     </Tabs>
