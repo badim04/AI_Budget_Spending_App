@@ -10,6 +10,7 @@
  */
 
 import { isFiled } from './categorize';
+import { describeChange } from './voice';
 import {
   FxTable,
   add,
@@ -478,11 +479,20 @@ export function generateInsights(
   for (const row of totals.slice(0, 8)) {
     if (row.changeVsPrevious == null || row.changeVsPrevious < 0.4) continue;
     if (row.total.minor < 100_00) continue; // ignore rounding-scale categories
+    /**
+     * Said the same way the rest of the app says it.
+     *
+     * This used to render "Eating out is up 858%" directly under a bar
+     * labelled "▲ 9.6×" — the same fact in two registers, one of them
+     * meaningless. `describeChange` owns the floor and the ceiling, so the
+     * banner and the badge can never disagree again.
+     */
+    const previousMinor = Math.round(row.total.minor / (1 + row.changeVsPrevious));
     out.push({
       id: `spike_${row.categoryId}`,
       severity: 'warning',
-      title: `${row.categoryName} is up ${fmtPct(row.changeVsPrevious)}`,
-      body: `${row.transactionCount} transaction${row.transactionCount === 1 ? '' : 's'} this period, against a much lighter month before it.`,
+      title: `${row.categoryName} had a busy month`,
+      body: `${formatMoney(row.total, { compactDecimals: true })} across ${row.transactionCount} transaction${row.transactionCount === 1 ? '' : 's'} — ${describeChange(row.total.minor, previousMinor, ctx.displayCurrency)}.`,
       action: { route: '/insights', params: { categoryId: row.categoryId } },
       weight: 60,
     });

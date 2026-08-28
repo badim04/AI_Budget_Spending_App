@@ -39,9 +39,29 @@ export interface Counterparty {
   bank?: string;
   /** Digits only, and only when the bank did not mask them. */
   account?: string;
+  /**
+   * The free text the sender typed: "chi", "milk", "ice cream".
+   *
+   * It describes what the money was for **to the recipient**, not to the
+   * sender. Money sent to a friend so she can buy milk is not the sender's
+   * groceries — it is a gift, or support, or a loan. So the note is carried
+   * for display and never used to categorise or to group by default.
+   */
+  note?: string;
   /** Stable grouping key. Direction is baked in — see above. */
   key: string;
 }
+
+/**
+ * How to bundle the review queue.
+ *
+ * `account` is the default and the most reliable: two people can share a name
+ * and one person's name can be written three ways, but an account number is an
+ * account number. `person` falls back to the name for banks that mask it.
+ * `note` exists because it is occasionally what someone wants — the choice
+ * belongs to the person doing the filing, not to this file.
+ */
+export type GroupMode = 'account' | 'person' | 'note';
 
 /** "Transfer to", "To", "Sent to" … and their inbound equivalents. */
 const OUTBOUND = /^(?:transfer|payment|sent|paid|debit)?\s*to\b[:\s]*/i;
@@ -74,6 +94,10 @@ export function readCounterparty(raw: string): Counterparty | null {
   const account = rest.find((p) => /^\d[\d\s-]{5,}$/.test(p) && !MASKED.test(p))?.replace(/\D/g, '');
   const bank = rest.find((p) => /[a-z]/i.test(p) && !/^\d/.test(p));
 
+  // `transferNote` already knows how to tell prose from bank machinery — a
+  // reference, a channel, a hyphenated API id. No second opinion needed here.
+  const note = transferNote(text) ?? undefined;
+
   // An unmasked account number is the strongest identity available: two people
   // can share a name, and one person's name can be written three ways.
   const identity = account || normaliseMerchant(name);
@@ -84,6 +108,7 @@ export function readCounterparty(raw: string): Counterparty | null {
     name,
     bank,
     account,
+    note,
     key: `${direction}:${identity}`,
   };
 }
@@ -96,19 +121,50 @@ export function readCounterparty(raw: string): Counterparty | null {
  * splits those by direction too, so a refund never lands in the same bucket as
  * the purchase.
  */
-export function groupKey(raw: string, isInflow: boolean, merchantKeyOf: (s: string) => string): string {
+export function groupKey(
+  raw: string,
+  isInflow: boolean,
+  merchantKeyOf: (s: string) => string,
+  mode: GroupMode = 'account'
+): string {
   const counterparty = readCounterparty(raw);
-  if (counterparty) return counterparty.key;
-  return `${isInflow ? 'in' : 'out'}:${merchantKeyOf(raw)}`;
+  const side = isInflow ? 'in' : 'out';
+
+  if (!counterparty) return `${side}:${merchantKeyOf(raw)}`;
+
+  if (mode === 'note') {
+    // Deliberately still split by direction: "chi" sent and "chi" received are
+    // not one bucket.
+    return `${side}:note:${counterparty.note ? noteKey(counterparty.note) : '(none)'}`;
+  }
+
+  if (mode === 'person') {
+    return `${side}:${normaliseMerchant(counterparty.name)}`;
+  }
+
+  // 'account' — the default, and `key` already prefers the account number.
+  return counterparty.key;
 }
 
 /** How to describe the group in a sentence: "12 transfers to Rashidat Bashiru". */
-export function describeGroup(raw: string, isInflow: boolean): string {
+export function describeGroup(raw: string, isInflow: boolean, mode: GroupMode = 'account'): string {
   const counterparty = readCounterparty(raw);
-  if (counterparty) {
-    return `${counterparty.direction === 'out' ? 'to' : 'from'} ${titleCase(counterparty.name)}`;
+  if (!counterparty) return 'like this';
+
+  if (mode === 'note') {
+    return counterparty.note ? `noted "${counterparty.note}"` : 'with no note';
   }
-  return isInflow ? 'like this' : 'like this';
+
+  return `${counterparty.direction === 'out' ? 'to' : 'from'} ${titleCase(counterparty.name)}`;
+}
+
+/** Title for a group card: the person, and the account when there is one. */
+export function groupTitle(raw: string, mode: GroupMode = 'account'): string {
+  const counterparty = readCounterparty(raw);
+  if (!counterparty) return raw.split('|')[0].trim();
+
+  if (mode === 'note') return counterparty.note ? titleCase(counterparty.note) : 'No note';
+  return titleCase(counterparty.name);
 }
 
 function titleCase(s: string): string {

@@ -25,8 +25,10 @@
 import * as XLSX from 'xlsx';
 import { decodeText } from '../bytes';
 import { extractPdfText, isPdf } from '../pdf/extract';
-import { tabulate } from '../pdf/table';
+import { tabulateSections } from '../pdf/table';
 import { detectColumns, looksLikeDate, parseCsv } from './parse';
+import { findDeclaredTotals, type DeclaredSection } from './reconcile';
+import type { CurrencyCode } from '../../core/money';
 
 // Re-exported: callers reading a statement should not have to know that BOM
 // sniffing lives one directory up.
@@ -41,6 +43,12 @@ export interface StatementSource {
   sections: string[];
   encrypted: boolean;
   warning?: string;
+  /**
+   * The totals the bank printed about itself, taken from the preamble before it
+   * is sliced away. `reconcileStatement` checks the parse against these; see
+   * `./reconcile.ts` for why that check exists.
+   */
+  declared: DeclaredSection[];
 }
 
 /** Extensions the picker should offer, and what we can actually read. */
@@ -75,28 +83,29 @@ export function formatFromName(name: string): StatementFormat {
 export function readStatement(
   bytes: Uint8Array,
   filename: string,
-  opts: { password?: string } = {}
+  opts: { password?: string; currency?: CurrencyCode } = {}
 ): StatementSource {
+  const currency = opts.currency ?? 'NGN';
   // Trust the bytes over the extension: a PDF saved as .txt is still a PDF.
   const format = isPdf(bytes) ? 'pdf' : looksLikeZip(bytes) ? 'xlsx' : formatFromName(filename);
 
   switch (format) {
     case 'pdf':
-      return readPdf(bytes, opts.password);
+      return readPdf(bytes, currency, opts.password);
     case 'xlsx':
-      return readSpreadsheet(bytes);
+      return readSpreadsheet(bytes, currency);
     case 'csv':
     case 'text':
-      return readDelimited(decodeText(bytes));
+      return readDelimited(decodeText(bytes), currency);
     default:
       // Last resort: if it decodes to something with delimiters, treat it as text.
-      return readDelimited(decodeText(bytes));
+      return readDelimited(decodeText(bytes), currency);
   }
 }
 
 // ----------------------------------------------------------------------- PDF
 
-function readPdf(bytes: Uint8Array, password?: string): StatementSource {
+function readPdf(bytes: Uint8Array, currency: CurrencyCode, password?: string): StatementSource {
   const extracted = extractPdfText(bytes);
 
   if (extracted.encrypted) {
@@ -104,6 +113,7 @@ function readPdf(bytes: Uint8Array, password?: string): StatementSource {
       format: 'pdf',
       rows: [],
       sections: [],
+      declared: [],
       encrypted: true,
       warning: password
         ? 'That password did not open the file. Check it and try again.'
@@ -116,6 +126,7 @@ function readPdf(bytes: Uint8Array, password?: string): StatementSource {
       format: 'pdf',
       rows: [],
       sections: [],
+      declared: [],
       encrypted: false,
       warning:
         extracted.warning ??
@@ -125,27 +136,51 @@ function readPdf(bytes: Uint8Array, password?: string): StatementSource {
 
   const sections = [`${extracted.pageCount} page${extracted.pageCount === 1 ? '' : 's'}`];
 
+  /**
+   * Declared totals come from reading order, not geometry.
+   *
+   * The preamble is prose in a two-column block, not a table, so column
+   * clustering has nothing to work with. `extracted.lines` already tab-separates
+   * the runs on each baseline, which is exactly the shape the label/value reader
+   * wants — and it is read here, before `tabulateSections` throws everything
+   * that is not a transaction away.
+   */
+  const declared = findDeclaredTotals(
+    extracted.lines.map((line) => line.split('\t').map((c) => c.trim())),
+    currency
+  );
+
   // Geometry first. Reading order only as a fallback, because it cannot tell a
   // wrapped description from a missing column — see `../pdf/table.ts`.
-  const table = tabulate(
+  const tables = tabulateSections(
     extracted.items,
     (cells) => detectColumns(cells) != null,
     (cells) => cells.some((c) => looksLikeDate(c))
   );
 
-  if (table) {
-    return {
-      format: 'pdf',
-      rows: [table.headers, ...table.rows],
-      sections,
-      encrypted: false,
-    };
+  if (tables.length > 0) {
+    /**
+     * Each section keeps its own header row.
+     *
+     * A wallet table and a savings table are laid out on different x positions,
+     * so their columns land in different places. Emitting one flat grid with a
+     * single header put every savings row one column right of where the header
+     * said it was; `parseStatementGrid` found an empty date cell and dropped all
+     * 58 of them without a problem entry. It re-reads the header whenever it
+     * meets one, so the shape is allowed to change mid-file.
+     */
+    const rows: string[][] = [];
+    for (const table of tables) rows.push(table.headers, ...table.rows);
+    if (tables.length > 1) sections.push(`${tables.length} account sections`);
+
+    return { format: 'pdf', rows, sections, declared, encrypted: false };
   }
 
   return {
     format: 'pdf',
     rows: stitchPdfRows(extracted.lines),
     sections,
+    declared,
     encrypted: false,
   };
 }
@@ -196,12 +231,13 @@ export function stitchPdfRows(lines: string[]): string[][] {
 
 // --------------------------------------------------------------- spreadsheet
 
-function readSpreadsheet(bytes: Uint8Array): StatementSource {
+function readSpreadsheet(bytes: Uint8Array, currency: CurrencyCode): StatementSource {
   try {
     const book = XLSX.read(bytes, { type: 'array', cellDates: false, raw: false });
     for (const name of book.SheetNames) repairRange(book.Sheets[name]);
     const rows: string[][] = [];
     const sections: string[] = [];
+    const declared: DeclaredSection[] = [];
 
     for (const name of book.SheetNames) {
       const sheet = book.Sheets[name];
@@ -222,18 +258,37 @@ function readSpreadsheet(bytes: Uint8Array): StatementSource {
       // rather than reporting six "unreadable date" problems per workbook. The
       // sheet name still reaches the user through `sections`.
       const header = cleaned.findIndex((row) => detectColumns(row) != null);
+
+      // Read the preamble for what it is worth before discarding it: those
+      // period totals are the only independent check on whether the rows below
+      // them were read correctly.
+      for (const section of findDeclaredTotals(
+        header === -1 ? cleaned : cleaned.slice(0, header),
+        currency
+      )) {
+        declared.push({ ...section, name: section.name || name });
+      }
+
       for (const row of header === -1 ? cleaned : cleaned.slice(header)) rows.push(row);
     }
 
     if (rows.length === 0) {
-      return { format: 'xlsx', rows: [], sections: [], encrypted: false, warning: 'The spreadsheet has no readable sheets.' };
+      return {
+        format: 'xlsx',
+        rows: [],
+        sections: [],
+        declared: [],
+        encrypted: false,
+        warning: 'The spreadsheet has no readable sheets.',
+      };
     }
-    return { format: 'xlsx', rows, sections, encrypted: false };
+    return { format: 'xlsx', rows, sections, declared, encrypted: false };
   } catch (e) {
     return {
       format: 'xlsx',
       rows: [],
       sections: [],
+      declared: [],
       encrypted: false,
       warning: `Could not read the spreadsheet: ${e instanceof Error ? e.message : String(e)}`,
     };
@@ -242,12 +297,16 @@ function readSpreadsheet(bytes: Uint8Array): StatementSource {
 
 // -------------------------------------------------------------------- text
 
-function readDelimited(text: string): StatementSource {
+function readDelimited(text: string, currency: CurrencyCode): StatementSource {
   const rows = parseCsv(text);
+  const header = rows.findIndex((row) => detectColumns(row) != null);
   return {
     format: 'csv',
     rows,
     sections: [],
+    // A CSV export usually starts at its header, but banks that prepend a
+    // summary block print the same totals there as the PDF does.
+    declared: header > 0 ? findDeclaredTotals(rows.slice(0, header), currency) : [],
     encrypted: false,
     warning: rows.length === 0 ? 'The file is empty.' : undefined,
   };

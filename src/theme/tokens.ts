@@ -55,36 +55,50 @@ const dark = {
   mode: 'dark' as ThemeMode,
 
   // Surfaces climb toward the viewer: canvas -> card -> raised.
-  canvas: '#0b0d12',
-  surface: '#12141a',
-  surfaceRaised: '#1a1d25',
-  surfaceSunken: '#080a0e',
+  // A trace of violet in the neutrals, so the accent sits in the same family
+  // as the surfaces instead of on top of them.
+  canvas: '#0c0a14',
+  surface: '#15121f',
+  surfaceRaised: '#1d1929',
+  surfaceSunken: '#09070f',
   /** Behind sheets and modals. */
   scrim: 'rgba(3, 5, 8, 0.72)',
 
-  border: '#242832',
-  borderStrong: '#333846',
+  border: '#292339',
+  borderStrong: '#3a3350',
   /** Hairline on top of a coloured fill, to keep adjacent marks separate. */
-  markGap: '#12141a',
+  markGap: '#15121f',
 
-  textPrimary: '#f2f4f8',
-  textSecondary: '#a2a9b8',
-  textMuted: '#6b7285',
-  textInverse: '#0b0d12',
+  textPrimary: '#f4f2fb',
+  textSecondary: '#a9a3c0',
+  textMuted: '#736d8a',
+  textInverse: '#0c0a14',
 
   /** The single brand accent. Used for the primary action and nothing else. */
-  accent: '#5b8cff',
-  accentPressed: '#4b78e0',
-  accentSubtle: 'rgba(91, 140, 255, 0.14)',
-  onAccent: '#08101f',
+  /**
+   * Finlo purple.
+   *
+   * The blue accent was a default, not an identity — it is the colour every
+   * banking app reaches for, and it made the product look like a dashboard
+   * someone had themed rather than a thing with a point of view. Purple is
+   * distinctive in this market, it already appears on the savings card, and it
+   * carries the "friendly but serious about money" register the brand wants.
+   */
+  accent: '#8b6cff',
+  accentPressed: '#7454e6',
+  accentSubtle: 'rgba(139, 108, 255, 0.16)',
+  onAccent: '#12082e',
+
+  /** Soft lavender: the accent at reading weight, for large tinted areas. */
+  accentSoft: '#2a2145',
 
   // Status. Reserved — never reused as a series colour.
   good: '#2fbe7e',
   goodSubtle: 'rgba(47, 190, 126, 0.14)',
-  warning: '#e0a92c',
-  warningSubtle: 'rgba(224, 169, 44, 0.14)',
-  critical: '#f2616a',
-  criticalSubtle: 'rgba(242, 97, 106, 0.14)',
+  warning: '#f5a524',
+  warningSubtle: 'rgba(245, 165, 36, 0.14)',
+  critical: '#ff6b70',
+  criticalSubtle: 'rgba(255, 107, 112, 0.14)',
   info: '#59a6f0',
   infoSubtle: 'rgba(89, 166, 240, 0.14)',
 
@@ -93,8 +107,8 @@ const dark = {
   inflow: '#3ecf8e',
   outflow: '#f0f2f6',
 
-  grid: '#1e222b',
-  axis: '#2b3040',
+  grid: '#221d31',
+  axis: '#302949',
 
   series: SERIES_DARK,
   otherSeries: OTHER_SERIES.dark,
@@ -115,63 +129,119 @@ const dark = {
    * that may be older than the change.
    */
   feature: {
-    primary: { bg: '#3d5afe', fg: '#ffffff', muted: 'rgba(255,255,255,0.72)' },
-    savings: { bg: '#7c4dff', fg: '#ffffff', muted: 'rgba(255,255,255,0.72)' },
-    spend: { bg: '#ff5722', fg: '#ffffff', muted: 'rgba(255,255,255,0.76)' },
-    calm: { bg: '#00b686', fg: '#00291d', muted: 'rgba(0,41,29,0.66)' },
+    primary: { bg: '#7c4dff', fg: '#ffffff', muted: 'rgba(255,255,255,0.74)' },
+    savings: { bg: '#4d3bd6', fg: '#ffffff', muted: 'rgba(255,255,255,0.74)' },
+    spend: { bg: '#ff5a5f', fg: '#ffffff', muted: 'rgba(255,255,255,0.78)' },
+    calm: { bg: '#12b981', fg: '#04291d', muted: 'rgba(4,41,29,0.68)' },
   },
   sheen: 'rgba(255,255,255,0.10)',
+
+  /**
+   * Tile colours, for a grid where every tile is a different one.
+   *
+   * The app was one column of identical rectangles, which is the layout of a
+   * report. What makes a consumer finance app feel navigable is that each
+   * destination looks like itself: you learn "the green one is goals" and stop
+   * reading labels. That only works if the set is fixed and each tile keeps
+   * its colour everywhere it appears.
+   *
+   * Separate from `series` (which encodes a category and cannot be chosen for
+   * looks) and from `feature` (one saturated fill behind a headline figure).
+   * These are quiet tinted panels with a bright tag and a faded glyph — legible
+   * as a group, distinguishable at a glance.
+   */
+  tile: {
+    violet: { bg: '#241d3d', border: '#3d3266', fg: '#cbb8ff', tag: '#7c4dff' },
+    blue:   { bg: '#152740', border: '#22406b', fg: '#a8cbff', tag: '#3d7bff' },
+    teal:   { bg: '#0f2f30', border: '#1a4f51', fg: '#8fe3d9', tag: '#0fb5a5' },
+    green:  { bg: '#132c1f', border: '#204a33', fg: '#94e0b4', tag: '#12b981' },
+    amber:  { bg: '#332512', border: '#573f1d', fg: '#f3cf8f', tag: '#f5a524' },
+    pink:   { bg: '#331728', border: '#582844', fg: '#f5aecd', tag: '#ec4899' },
+  },
 };
 
+/**
+ * Light mode, designed rather than inverted.
+ *
+ * It was previously the dark ramp turned inside out — grey canvas, grey cards,
+ * grey borders — which is legible and completely lifeless. Three changes give
+ * it a spine:
+ *
+ *   1. **Cards are white, the canvas is not.** A near-white tinted canvas with
+ *      pure white cards floating on it is what makes a light UI read as
+ *      layered instead of flat. Inverting a dark theme gives the opposite.
+ *   2. **A hint of warmth in the neutrals.** Pure grey looks like a wireframe;
+ *      a few degrees toward blue-violet reads as considered and matches the
+ *      accent instead of fighting it.
+ *   3. **Borders barely exist.** In light mode, separation comes from the
+ *      surface step and a soft shadow. Hairlines everywhere is a spreadsheet.
+ */
 const light: typeof dark = {
   mode: 'light',
 
-  canvas: '#f6f7f9',
-  surface: '#fcfcfb',
+  // Very light lavender rather than plain grey: the canvas belongs to the
+  // brand too, and a neutral one makes white cards look like paper on a table.
+  canvas: '#f7f5ff',
+  surface: '#ffffff',
   surfaceRaised: '#ffffff',
-  surfaceSunken: '#eef0f4',
-  scrim: 'rgba(11, 13, 18, 0.44)',
+  surfaceSunken: '#f0ecfd',
+  scrim: 'rgba(20, 16, 40, 0.40)',
 
-  border: '#e3e6ec',
-  borderStrong: '#cbd0da',
-  markGap: '#fcfcfb',
+  border: '#e9e4f8',
+  borderStrong: '#cdc4e6',
+  markGap: '#ffffff',
 
-  textPrimary: '#0b0b0b',
-  textSecondary: '#52514e',
-  textMuted: '#84867f',
+  // Deep navy, not black: pure black on white is harsh at body size and reads
+  // as a wireframe. This keeps the violet family without tinting the text.
+  textPrimary: '#1a1c3d',
+  textSecondary: '#4a4a70',
+  textMuted: '#807ba0',
   textInverse: '#ffffff',
 
-  accent: '#2f5fe0',
-  accentPressed: '#2549b8',
-  accentSubtle: 'rgba(47, 95, 224, 0.10)',
+  accent: '#6c4dff',
+  accentPressed: '#573ad6',
+  accentSubtle: 'rgba(108, 77, 255, 0.10)',
   onAccent: '#ffffff',
 
-  good: '#0f8f5a',
-  goodSubtle: 'rgba(15, 143, 90, 0.10)',
-  warning: '#a8730a',
-  warningSubtle: 'rgba(168, 115, 10, 0.10)',
-  critical: '#c8383f',
-  criticalSubtle: 'rgba(200, 56, 63, 0.10)',
+  /** Soft lavender: large tinted areas that must stay readable. */
+  accentSoft: '#efeaff',
+
+  good: '#0f9d63',
+  goodSubtle: 'rgba(15, 157, 99, 0.10)',
+  warning: '#b8760a',
+  warningSubtle: 'rgba(184, 118, 10, 0.12)',
+  critical: '#d94a52',
+  criticalSubtle: 'rgba(217, 74, 82, 0.10)',
   info: '#2a78d6',
   infoSubtle: 'rgba(42, 120, 214, 0.10)',
 
   inflow: '#0f8f5a',
-  outflow: '#0b0b0b',
+  outflow: '#12142a',
 
-  grid: '#eaecf1',
-  axis: '#d3d7e0',
+  grid: '#efebfb',
+  axis: '#d9d2ee',
 
   series: SERIES_LIGHT,
   otherSeries: OTHER_SERIES.light,
 
   /** See the dark palette: chrome, not data encoding. */
   feature: {
-    primary: { bg: '#3d5afe', fg: '#ffffff', muted: 'rgba(255,255,255,0.78)' },
-    savings: { bg: '#7c4dff', fg: '#ffffff', muted: 'rgba(255,255,255,0.78)' },
-    spend: { bg: '#f4511e', fg: '#ffffff', muted: 'rgba(255,255,255,0.82)' },
-    calm: { bg: '#00a97b', fg: '#00291d', muted: 'rgba(0,41,29,0.7)' },
+    primary: { bg: '#6c4dff', fg: '#ffffff', muted: 'rgba(255,255,255,0.80)' },
+    savings: { bg: '#4d3bd6', fg: '#ffffff', muted: 'rgba(255,255,255,0.80)' },
+    spend: { bg: '#ff5a5f', fg: '#ffffff', muted: 'rgba(255,255,255,0.84)' },
+    calm: { bg: '#0fa873', fg: '#04291d', muted: 'rgba(4,41,29,0.72)' },
   },
   sheen: 'rgba(255,255,255,0.16)',
+
+  /** See the dark palette. Pastel fills in light mode, same six identities. */
+  tile: {
+    violet: { bg: '#f0ebff', border: '#ddd0ff', fg: '#4c2fb8', tag: '#7c4dff' },
+    blue:   { bg: '#e8f0ff', border: '#cfe0ff', fg: '#1c4fa8', tag: '#3d7bff' },
+    teal:   { bg: '#e2f7f5', border: '#c3ebe6', fg: '#0b6b62', tag: '#0fb5a5' },
+    green:  { bg: '#e6f7ee', border: '#c6ebd8', fg: '#0b6b46', tag: '#12b981' },
+    amber:  { bg: '#fdf2dd', border: '#f7e0b4', fg: '#8a5a06', tag: '#f5a524' },
+    pink:   { bg: '#fdeaf3', border: '#f8cfe2', fg: '#9c1f5c', tag: '#ec4899' },
+  },
 };
 
 export type Palette = typeof dark;

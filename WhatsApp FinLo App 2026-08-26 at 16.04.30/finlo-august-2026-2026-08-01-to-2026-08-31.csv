@@ -1,0 +1,91 @@
+﻿# Transactions
+Date,Merchant,Category,Account,Amount (NGN),Type,Note,Source,Reviewed
+2026-08-13,Employer,Salary,Main current account,1150000,Income,,manual,Yes
+2026-08-13,Netflix,Subscriptions,Main current account,'-7200,Expense,,manual,Yes
+2026-08-12,Bolt,Transport,Main current account,'-3476,Expense,,manual,Yes
+2026-08-12,Ikeja Electric,Utilities,Main current account,'-27533.35,Expense,,manual,Yes
+2026-08-12,Mama Put Kitchen,Eating out,Mobile wallet,'-4200,Expense,,receipt_scan,No
+2026-08-11,Zzqq Ventures,Uncategorised,Mobile wallet,'-18500,Expense,,email_import,No
+2026-08-10,Chicken Republic,Eating out,Main current account,'-6161,Expense,,manual,Yes
+2026-08-10,Shoprite Ikeja,Groceries,Main current account,'-96000,Expense,,email_import,No
+2026-08-09,Uber,Transport,Main current account,'-3167,Expense,,manual,Yes
+2026-08-08,Chicken Republic,Eating out,Main current account,'-4956,Expense,,manual,Yes
+2026-08-08,Spectranet,Utilities,Main current account,'-25000,Expense,,manual,Yes
+2026-08-08,Anthropic,Subscriptions,USD savings,'-20,Expense,,manual,Yes
+2026-08-07,Shoprite Ikeja,Groceries,Main current account,'-35289,Expense,,manual,Yes
+2026-08-07,Uber,Transport,Main current account,'-3824,Expense,,manual,Yes
+2026-08-07,Bolt,Transport,Main current account,'-2956,Expense,,manual,Yes
+2026-08-05,MTN Data,Airtime & data,Main current account,'-11742,Expense,,manual,Yes
+2026-08-05,Landlord,Rent & housing,Main current account,'-450000,Expense,,manual,Yes
+2026-08-01,Prince Ebeano,Groceries,Main current account,'-16785,Expense,,manual,Yes
+2026-08-01,Uber,Transport,Main current account,'-4139,Expense,,manual,Yes
+
+# Summary
+Finlo report
+Period,August 2026
+From,2026-08-01
+To,2026-08-31
+Currency,NGN
+Generated,2026-08-25T14:36:15.319Z
+
+Metric,Value,Note
+Total spend,"₦752,528.35",August 2026
+Total income,"₦1,150,000.00",August 2026
+Net,"'+₦397,471.65",You kept money this period
+Savings rate,35%,Above the 20% mark
+Runway,11.3 months,Liquid balance at your median monthly spend
+Net worth,"₦9,212,020.24","'+₦397,471.65 over the period"
+
+Total income,1150000
+Total spend,752528.35
+Net,397471.65
+Net worth (start),8814548.59
+Net worth (end),9212020.24
+
+# Categories
+Category,Amount (NGN),Share %,Transactions,Change vs previous %
+Rent & housing,450000,59.8,1,0
+Groceries,148074,19.7,3,18.7
+Utilities,52533.35,7,2,'-9.4
+Subscriptions,38800,5.2,2,285.1
+Uncategorised,18500,2.5,1,
+Transport,17562,2.3,5,'-80
+Eating out,15317,2,3,'-56.9
+Airtime & data,11742,1.6,1,'-53
+
+# Monthly
+Month,Income (NGN),Spend (NGN),Net (NGN)
+March 2026,1150000,763324.22,386675.78
+April 2026,1150000,827215.18,322784.82
+May 2026,1150000,819282.56,330717.44
+June 2026,1150000,812425.17,337574.83
+July 2026,1150000,813438.35,336561.65
+August 2026,1150000,752528.35,397471.65
+
+# Budgets
+Budget,Spent (NGN),Allocated (NGN),Remaining (NGN),Used %,Status
+Home & bills,514275.35,540000,25724.65,95.2,warning
+Food,163391,486284,322893,33.6,on_track
+Transport,17562,118412,100850,14.8,on_track
+Lifestyle,7200,402150,394950,1.8,on_track
+
+# Merchants
+Merchant,Visits,Total (NGN),Average (NGN)
+Landlord,1,450000,450000
+Shoprite Ikeja,2,131289,65644.5
+Anthropic,1,31600,31600
+Ikeja Electric,1,27533.35,27533.35
+Spectranet,1,25000,25000
+Zzqq Ventures,1,18500,18500
+Prince Ebeano,1,16785,16785
+MTN Data,1,11742,11742
+Uber,3,11130,3710
+Chicken Republic,2,11117,5558.5
+
+# Forecast
+Month,Projected spend (NGN),Low,High
+2026-08-31,807137.1,795654.2,818619.99
+2026-09-30,807137.1,790897.84,823376.36
+2026-10-30,807137.1,787248.14,827026.05
+
+"Projected with a average model, typical error ±1%. Confidence: medium."

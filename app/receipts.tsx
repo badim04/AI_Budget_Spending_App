@@ -28,6 +28,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '../src/theme/ThemeProvider';
+import { Spot } from '../src/components/art/Spot';
 import { Button, Card, Pill } from '../src/components/ui/Primitives';
 import { useAppStore } from '../src/store/useAppStore';
 import { currencyMeta, formatMoney, money, parseMoney } from '../src/core/money';
@@ -147,7 +148,7 @@ export default function BatchReceiptsScreen() {
   if (pending.length === 0) {
     return (
       <View style={[styles.center, { flex: 1, backgroundColor: c.canvas, padding: sp.xl }]}>
-        <Ionicons name="documents-outline" size={40} color={c.textMuted} />
+        <Spot name="receipt" size={112} tone="teal" />
         <Text style={[t.heading, { color: c.textPrimary, marginTop: sp.lg, textAlign: 'center' }]}>
           Nothing to review
         </Text>

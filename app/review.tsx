@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useTheme } from '../src/theme/ThemeProvider';
+import { Spot } from '../src/components/art/Spot';
 import { AmountText, Button, Card, Pill } from '../src/components/ui/Primitives';
 import { useAppStore } from '../src/store/useAppStore';
 import { fetchCandidateEmails } from '../src/ingest/email/gmail';
@@ -161,8 +162,13 @@ export default function ReviewScreen() {
 
       {!busy && ranOnce && staged.length === 0 ? (
         <Card style={{ marginTop: sp.xl }}>
-          <Text style={[t.body, { color: c.textPrimary }]}>Nothing new found.</Text>
-          <Text style={[t.caption, { color: c.textMuted, marginTop: sp.xs }]}>
+          <View style={{ alignItems: 'center', paddingVertical: sp.md }}>
+            <Spot name="envelope" size={104} tone="amber" />
+          </View>
+          <Text style={[t.heading, { color: c.textPrimary, textAlign: 'center' }]}>
+            Nothing new found
+          </Text>
+          <Text style={[t.caption, { color: c.textMuted, marginTop: sp.xs, textAlign: 'center' }]}>
             {skipped.length > 0
               ? `${skipped.length} message${skipped.length === 1 ? '' : 's'} were skipped — already imported, or not transactions.`
               : 'No bank alerts or receipts matched in the search window.'}

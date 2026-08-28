@@ -22,6 +22,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useTheme } from '../src/theme/ThemeProvider';
+import { Tile, TileGrid } from '../src/components/ui/Tiles';
 import { AmountText, Button, Card, Pill } from '../src/components/ui/Primitives';
 import { useAppStore } from '../src/store/useAppStore';
 import { formatMoney } from '../src/core/money';
@@ -198,40 +199,26 @@ export default function ReportsScreen() {
         FORMAT
       </Text>
 
-      {FORMATS.map((f) => (
-        <Card key={f} style={{ marginBottom: sp.md }}>
-          <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
-            <Ionicons
-              name={FORMAT_ICON[f]}
-              size={22}
-              color={c.accent}
-              style={{ marginRight: sp.md, marginTop: 2 }}
+      {/* Three formats, three colours, side by side. They are alternatives to
+          each other — a stacked list of identical cards makes them look like
+          three steps. */}
+      <TileGrid>
+        {FORMATS.map((f, i) => {
+          const tones = ['violet', 'green', 'blue'] as const;
+          return (
+            <Tile
+              key={f}
+              tone={tones[i % tones.length]}
+              tag={busy === f ? 'Building…' : Platform.OS === 'web' ? 'Download' : 'Export'}
+              title={FORMAT_LABEL[f]}
+              subtitle={FORMAT_HINT[f]}
+              glyph={f === 'pdf' ? '📕' : f === 'xlsx' ? '📗' : '📄'}
+              index={i}
+              onPress={busy ? undefined : () => void run(f)}
             />
-            <View style={{ flex: 1 }}>
-              <Text style={[t.heading, { color: c.textPrimary }]}>{FORMAT_LABEL[f]}</Text>
-              <Text style={[t.caption, { color: c.textSecondary, marginTop: sp.xs }]}>
-                {FORMAT_HINT[f]}
-              </Text>
-              <View style={{ marginTop: sp.lg }}>
-                {busy === f ? (
-                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <ActivityIndicator color={c.accent} />
-                    <Text style={[t.caption, { color: c.textMuted, marginLeft: sp.sm }]}>
-                      Building {FORMAT_LABEL[f]}…
-                    </Text>
-                  </View>
-                ) : (
-                  <Button
-                    label={Platform.OS === 'web' ? `Download ${FORMAT_LABEL[f]}` : `Export ${FORMAT_LABEL[f]}`}
-                    variant={f === 'pdf' ? 'primary' : 'secondary'}
-                    onPress={() => void run(f)}
-                  />
-                )}
-              </View>
-            </View>
-          </View>
-        </Card>
-      ))}
+          );
+        })}
+      </TileGrid>
 
       <Text style={[t.micro, { color: c.textMuted, marginTop: sp.md, lineHeight: 16 }]}>
         Everything is generated on your device — no data is uploaded to produce a report.

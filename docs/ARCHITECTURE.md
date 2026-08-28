@@ -149,6 +149,33 @@ miscategorised transaction, so it stays short. `gas` was cut because it would
 file a filling station as a utility bill; `test` because a transfer noted "test"
 usually is one.
 
+### The note says why, the account says who
+
+A peer transfer carries a note the sender typed: `Transfer to RASHIDAT BASHIRU
+| OPay | 7046464337 | milk`. That note describes the purpose **for the person
+receiving the money**. Sending a friend money so she can buy milk is not the
+sender's groceries — it is a gift, or support, or a loan, and only the person
+filing it knows which.
+
+So `groupKey` takes a `GroupMode`. `account` is the default because an account
+number is the only stable identity: a name can be spelled three ways and two
+people can share one. `person` falls back to the name for banks that mask the
+number. `note` exists because it is occasionally what someone wants. The app
+offers all three in the review queue and does not decide.
+
+Direction is baked into every mode. Money sent to someone and money received
+from them are never one bucket.
+
+On the real 229-row statement this turns 128 money-out rows into 47 decisions
+by account, or 19 by note. One card reads "Rashidat Bashiru · 7046464337 · 10
+transactions · ₦33,000" and one tap files all ten.
+
+Note extraction lives in `src/core/notes.ts`, which imports nothing: it is
+needed by both `categorize.ts` and `counterparty.ts`, and `counterparty.ts`
+already depends on `categorize.ts`. Putting it in either would close an import
+cycle, and Metro answers a cycle with a half-initialised module — a failure
+this codebase has already lost a day to.
+
 ### Time is a control, not a constant
 
 Every screen was pinned to today, which answers one question and refuses every
@@ -173,6 +200,144 @@ chosen deliberately.
 could only ever answer one question. Category movers are ranked by *absolute*
 change: a category that fell by ₦40,000 is exactly as interesting as one that
 rose by it.
+
+### Artwork is drawn, not imported
+
+`src/components/art/` holds a mascot (Fin, five poses) and eight spot
+illustrations, all as SVG paths. A PNG would look better in a mockup and would
+also be four files per pose, wrong in dark mode, fixed at one size, and a
+designer round-trip for every new state. Vector paths recolour with the theme,
+scale to any size, cost nothing to ship, and a new pose is a few lines.
+
+The constraint that shapes them: Fin has to read at 40px. Two eyes, a mouth, a
+silhouette. Anything more disappears at the size it is actually used, so the
+detail budget goes on the highlight in the eye — which is the whole difference
+between alive and printed.
+
+Spots take a `TileTone` rather than fixed colour, so one drawing is six moods
+and a spot on a green tile is green.
+
+### One fact, one register
+
+The dashboard once rendered a bar labelled "▲ 9.6×" directly above a banner
+reading "Eating out is up 858%" — the same fact twice, one of them meaningless.
+They came from different modules that each formatted their own percentage.
+
+`describeChange` and `compactChange` in `core/voice.ts` are now the only two
+places a change is turned into words, and `analytics.ts` calls them for the
+insight text. The floor, the ceiling and the choice between naira, percent and
+multiples live in one file, so the badge and the sentence cannot drift apart
+again.
+
+### Dates are picked, not typed
+
+Every date was a text box wanting `YYYY-MM-DD`: needs a keyboard, needs the
+format remembered, silently accepts `2026-13-45`, and on a phone means
+switching to the number pad and back for one field.
+
+`components/ui/DateField` is a month grid with three shortcuts (today,
+yesterday, start of month — most dates in a finance app are one of those) and
+`maxToday`, which blocks the future for anything that has already happened.
+Blocking is kinder than validating afterwards. Everything is a `YYYY-MM-DD`
+string parsed as UTC via `core/dates`, never a local `Date` waiting to shift by
+one.
+
+### Side by side is not decoration, it is the comparison
+
+`Tiles.tsx` grew three pieces, each because two or more screens were hand-rolling
+a worse version of it.
+
+**`StatRow` / `StatTile`.** Money out and money in are one fact with two halves,
+and stacking them turns a comparison into a sequence: you read the first, scroll,
+and have to hold it in your head to make sense of the second. Side by side the
+comparison is free. Widths are always equal, however different the labels — an
+unequal column reads as a hierarchy, and neither half outranks the other. The
+movement is a chip with an arrow rather than coloured text, because a sign has to
+survive being glanced at and has to work for someone who cannot separate the red
+from the green. `value` arrives already formatted: a layout component that
+reached into `core/money` would become the second place deciding how a naira is
+written.
+
+**`SegmentedControl`.** Every screen had grown its own row of pill chips, and a
+row of chips does not say how many there are or that they are exclusive — it
+looks like filters you can combine. A sunken track with one raised segment is
+what the phone already uses for "pick exactly one", and it takes one line where
+chips wrapped to two. Counts ride as a badge so three segments still fit across
+the narrowest phone.
+
+**`charts/Ring`.** A bar chart answers "which is biggest"; a donut answers "how
+is the whole divided", which is the question someone actually has about a month
+of spending. The total goes in the hole so the parts and the whole are read in
+one movement. Slices below a minimum sweep are merged into a remainder rather
+than dropped — a gap in a ring drawn around a total that still counts them is a
+chart disagreeing with its own centre. Colour comes from the caller and never
+from the chart: a slice hue encodes a category, and it is the validated `series`
+set that owns it.
+
+### Structural variety is the design, not more colour
+
+Finlo was one column of full-width rectangles, top to bottom, every one the
+same shape. Styling those rectangles more brightly does not change what they
+are: that is the layout of a report, and it is why the app read as accounting
+software however the cards were painted.
+
+`src/components/ui/Tiles.tsx` adds the vocabulary that was missing, and the
+point of each piece is the shape rather than the colour:
+
+- **`HeroCarousel`** — one big figure at a time, swiped, with dots. Three
+  things about your money in the space one used to take.
+- **`TileGrid` / `Tile`** — two columns, each tile a different fixed colour
+  with a bright action tag and a faded oversized glyph bled off the corner. The
+  colours are a fixed set of six and each destination keeps its own, so you
+  learn "the green one is goals" and stop reading labels.
+- **`ScrollRow` / `MiniCard`** — a row that deliberately bleeds past the page
+  gutter. A card cut off at the right edge is what tells someone there is more
+  sideways; a row that stops neatly inside the margin looks finished and nobody
+  swipes it.
+- **`Banner`** — full width, one message, in the app's own voice.
+
+Three palettes now coexist and must not be confused. `series` encodes a
+category and cannot be chosen for looks. `feature` is one saturated fill behind
+a headline figure. `tile` is six quiet tinted panels that identify a
+destination. Only the first carries data.
+
+The tile "illustration" is an emoji at 13% opacity, rotated, oversized and
+clipped by the tile. Real vector art would be better and needs a designer; this
+gets most of the texture with no asset pipeline, and it inherits the tile's own
+colour so it can never fight the palette.
+
+### The app has a voice, and the voice does arithmetic
+
+Insights used to say "Transport is up 887%". True — transport went from ₦1,500
+to ₦14,800 — and useless. Nobody holds a ninefold increase as a percentage, and
+a ratio taken off a base that small is noise wearing the costume of a finding.
+
+`src/core/voice.ts` owns how Finlo speaks, and the rules are as much about
+statistics as tone:
+
+- **A ratio needs a base worth dividing by, and a ceiling.** Under ₦1,000 the
+  sentence talks in naira; over 300% it talks in multiples ("about 9.6× last
+  month"); in between, where a percentage is genuinely clearest, it uses one.
+  `compactChange` applies the same rules to the badge beside a bar.
+- **Essentials are not lifestyle choices.** Rent going up gets a flat factual
+  line. Teasing someone about their rent is the moment they stop trusting the
+  app.
+- **Say nothing rather than something empty.** A change too small to act on
+  returns null and the card does not render. Filler is how an app teaches
+  people to skip its messages.
+- **Deterministic.** The same numbers always produce the same sentence. A
+  figure that reads differently on each refresh looks broken.
+
+It is pure and has no clock of its own, so the whole voice is testable —
+`tests/voice.test.ts` pins the 887% case directly.
+
+### Settings is a list, not eight dashboards
+
+Every setting had its own bordered card under its own heading, so a page with
+eight settings read as eight subsystems. To the person using it they are a
+handful of things about their money, their automation and the app. They are now
+named groups of hairline-separated rows, each showing its state on the right,
+so the page can be read down its right-hand edge without opening anything.
 
 ### Colour and motion, and where each is allowed
 
@@ -350,6 +515,73 @@ Related: an exporter's declared spreadsheet range is not to be trusted either.
 The OPay XLSX declares `A10:H178` while its header sits at A7 and two real
 transactions at A8 and A9, so `readSpreadsheet` recomputes the range from the
 cells that actually exist.
+
+### A statement can change shape half way down
+
+The PDF reader was silently dropping 58 transactions, and every test said it was
+fine.
+
+An OPay statement covering a wallet and a savings account prints **two** tables,
+and the second is laid out on its own x positions — the description column moves
+from 177.9 to 195.4, the debit column from 303.8 to 259.5. `tabulate` clustered
+column anchors across the whole file and emitted one grid under one header, so
+every savings row landed a column to the right of where the header said it was.
+`parseStatementGrid` read `cells[columns.date]`, found an empty string, and hit
+`if (!dateCell) continue` — the branch meant for trailing totals rows. No
+exception, no warning, not even an entry in `problems`.
+
+The suite passed because it had been written against wallet-only totals, and
+nobody knew the savings section existed. Worse, `tests/fixtures.ts` searched only
+`Downloads`; the statements had moved into the repo, so the thirteen
+cross-format checks had been skipping — reported as passes — for some time.
+
+Three changes, at three different layers:
+
+- `tabulateSections` computes anchors **per section**. A repeated page header is
+  told apart from a new section by the only thing that actually distinguishes
+  them: a page repeat sits on the same x positions, a new section does not.
+- `parseStatementGrid` **re-reads the header** whenever it meets one instead of
+  skipping it, so the column map is allowed to change mid-file. A transaction row
+  cannot be mistaken for a header — `detectColumns` needs a cell naming a date
+  column and one naming a description column, and a row of dates and amounts has
+  neither.
+- `tests/fixtures.ts` searches every location the files have lived in, because
+  each move had silently switched the strongest tests in the repo off.
+
+### Reconcile against the bank's own arithmetic, or the next one is silent too
+
+Every failure this importer has had was silent, and each was found by accident.
+The fix is to stop relying on accident: the bank prints its own totals in the
+file preamble, and that is ground truth written by the institution that moved the
+money.
+
+`src/ingest/statement/reconcile.ts` reads them from both layouts banks use — the
+stacked one a PDF emits (a row of labels, then a row of values, with the currency
+symbol as its own text run) and the inline one a spreadsheet uses — sums them
+across sections, and compares. Zero tolerance: money is integer minor units on
+both sides and the declared figures are exact. A tolerance here would be a
+tolerance on how wrong someone's financial history is allowed to be.
+
+Two things make it safe to give this a veto over imports:
+
+**The declaration is checked before it is trusted.** A section must satisfy
+`opening + credit − debit = closing`. If it does not, we misread the preamble
+rather than the rows, and that section is excluded from the verdict instead of
+being allowed to block a good import. Without that guard, a bank whose preamble
+we parse badly would be permanently unimportable — which is just the old silent
+failure wearing a new costume.
+
+**A mismatch names a count before an amount.** Sorting all four checks by
+absolute delta ranks a ₦14.73 discrepancy above 56 missing transactions, because
+minor units are large numbers and row counts are small ones. A failing count is
+also the more diagnostic: it says rows are missing or doubled, where a money
+delta alone could be one misread digit.
+
+The screen refuses rather than warns. A warning above a working button is no
+guard at all when the whole failure mode is that a wrong amount looks exactly
+like a right one — there is nothing on the screen for the reader to catch it
+with. The override is a separate, deliberate tap taken after seeing which figure
+disagrees and by how much.
 
 ### The device has fewer Web APIs than Node or Chrome
 

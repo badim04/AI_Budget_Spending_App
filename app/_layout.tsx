@@ -89,13 +89,26 @@ function Shell() {
   );
 }
 
+/**
+ * Reads the stored theme preference before painting anything.
+ *
+ * `ThemeProvider` has always accepted an override and nothing ever passed one,
+ * so the app silently followed the OS and light mode was unreachable on a
+ * phone set to dark — including for the person building it.
+ */
+function Themed({ children }: { children: React.ReactNode }) {
+  const preference = useAppStore((s) => s.settings.theme);
+  const mode = preference === 'light' || preference === 'dark' ? preference : 'system';
+  return <ThemeProvider override={mode}>{children}</ThemeProvider>;
+}
+
 export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <ThemeProvider>
+        <Themed>
           <Shell />
-        </ThemeProvider>
+        </Themed>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

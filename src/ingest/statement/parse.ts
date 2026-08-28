@@ -231,19 +231,36 @@ export function parseStatementGrid(
   }
 
   const headers = grid[headerIndex].map((h) => h.trim());
-  const columns = detectColumns(headers)!;
   const rows: StatementRow[] = [];
 
-  const headerSignature = headers.join('\u0000');
+  /**
+   * The shape is allowed to change part-way down the file.
+   *
+   * A workbook puts its wallet and its savings on separate sheets and a PDF
+   * prints them as separate tables, and the two do not have to share a column
+   * layout — in the statement this was built against, savings sits one column
+   * to the right of wallet. Skipping a repeated header and carrying the first
+   * layout onwards read every savings row's date cell as empty, and the
+   * `if (!dateCell) continue` below dropped all 58 of them without so much as a
+   * problem entry. Re-reading the header costs one `detectColumns` call per row
+   * and makes a multi-account statement import correctly.
+   *
+   * A transaction row cannot be mistaken for a header: `detectColumns` needs a
+   * cell naming a date column and a cell naming a description column, and a row
+   * of dates and amounts has neither.
+   */
+  let columns = detectColumns(headers)!;
 
   for (let i = headerIndex + 1; i < grid.length; i++) {
     const cells = grid[i];
     const lineNo = i + 1;
     const raw = cells.join(' | ');
 
-    // Multi-sheet workbooks and multi-page PDFs repeat their header. Skipping
-    // it silently keeps the problem list about real rows.
-    if (cells.map((c) => c.trim()).join('\u0000') === headerSignature) continue;
+    const nextLayout = detectColumns(cells.map((c) => c.trim()));
+    if (nextLayout) {
+      columns = nextLayout;
+      continue;
+    }
 
     const dateCell = (cells[columns.date] ?? '').trim();
     if (!dateCell) continue; // trailing totals row, or a blank separator

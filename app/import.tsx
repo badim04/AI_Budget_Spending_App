@@ -12,7 +12,18 @@
  */
 
 import React, { useCallback, useMemo, useState } from 'react';
-import { ScrollView, View, Text, Pressable, TextInput, ActivityIndicator, Platform, Alert, StyleSheet } from 'react-native';
+import {
+  ScrollView,
+  View,
+  Text,
+  Pressable,
+  TextInput,
+  ActivityIndicator,
+  Platform,
+  Alert,
+  StyleSheet,
+  Animated,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
@@ -20,8 +31,11 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
 import { useTheme } from '../src/theme/ThemeProvider';
 import { AmountText, Button, Card, Pill } from '../src/components/ui/Primitives';
+import { FeatureCard, FeaturePill } from '../src/components/ui/FeatureCard';
+import { DateField } from '../src/components/ui/DateField';
+import { usePressScale } from '../src/theme/motion';
 import { useAppStore } from '../src/store/useAppStore';
-import { formatMoney, money } from '../src/core/money';
+import { formatMoney, money, type CurrencyCode } from '../src/core/money';
 import { formatDate, nowISO, today } from '../src/core/dates';
 import { categorise, prettyMerchant, shouldAutoApply } from '../src/core/categorize';
 import { dedupeKey } from '../src/db/schema';
@@ -36,6 +50,7 @@ import {
   type ParsedStatement,
   type StatementRow,
 } from '../src/ingest/statement/parse';
+import { reconcileStatement, type Reconciliation } from '../src/ingest/statement/reconcile';
 import type { Transaction } from '../src/core/types';
 
 function notify(title: string, message?: string) {
@@ -109,6 +124,25 @@ export default function ImportScreen() {
   const [llmProgress, setLlmProgress] = useState('');
   const [sourceFormat, setSourceFormat] = useState<StatementFormat | null>(null);
   const [sourceSections, setSourceSections] = useState<string[]>([]);
+  /**
+   * How the parse compared with the totals the bank printed on the file.
+   *
+   * Held against the WHOLE file rather than the chosen window: it is a fact
+   * about whether the file was read correctly, which narrowing a date range
+   * neither improves nor invalidates.
+   */
+  const [check, setCheck] = useState<Reconciliation | null>(null);
+  /**
+   * Set only by the user tapping past a failed reconciliation.
+   *
+   * A mismatch means we read the file differently from the bank that wrote it,
+   * so the default is to stop. It is not made impossible, because a bank whose
+   * preamble we misparse would otherwise be permanently unimportable — but it
+   * takes a deliberate tap against a screen that says exactly which figure
+   * disagrees and by how much. Refusing silently and refusing absolutely are
+   * different things; only the first one is the bug.
+   */
+  const [overrideMismatch, setOverrideMismatch] = useState(false);
 
   const account = accounts.find((a) => a.id === accountId);
   const currency = account?.currency ?? settings.display_currency ?? 'NGN';
@@ -148,7 +182,7 @@ export default function ImportScreen() {
               })
             );
 
-      const source = readStatement(bytes, name);
+      const source = readStatement(bytes, name, { currency });
 
       if (source.encrypted) {
         notify(
@@ -167,6 +201,15 @@ export default function ImportScreen() {
       setParsed(result);
       setSourceFormat(source.format);
       setSourceSections(source.sections);
+      /**
+       * Checked against the whole file, never the chosen window.
+       *
+       * Whether the file was read correctly is a property of the read. Narrowing
+       * the date range afterwards is a deliberate choice and must not be able to
+       * turn a failed reconciliation into a passing one.
+       */
+      setCheck(reconcileStatement(source.declared, result.rows));
+      setOverrideMismatch(false);
       setFrom(result.from ?? '');
       setTo(result.to ?? '');
       setUsedLlm(0);
@@ -244,6 +287,18 @@ export default function ImportScreen() {
   const totals = summarise(fresh.map((s) => s.row));
   const llm = llmStatus();
 
+  /**
+   * Reading the file differently from the bank that wrote it stops the import.
+   *
+   * Not a warning above an enabled button: the whole failure mode being guarded
+   * is that a wrong amount looks exactly like a right one, so there is nothing
+   * on the screen to catch the mistake if the button still works. The override
+   * exists because a bank whose preamble we misparse would otherwise be
+   * permanently unimportable — but it is a separate, deliberate tap made after
+   * reading which figure disagrees and by how much.
+   */
+  const blocked = check?.status === 'mismatch' && !overrideMismatch;
+
   /** Ask the model about the rows nothing else recognised. Batched, opt-in. */
   const runLlm = useCallback(async () => {
     const unknown = fresh.filter((s) => !s.categoryId).map((s) => s.row.description);
@@ -287,6 +342,8 @@ export default function ImportScreen() {
 
   const doImport = useCallback(async () => {
     if (!parsed || !account) return;
+    // Belt and braces: the button is disabled, and the write still refuses.
+    if (check?.status === 'mismatch' && !overrideMismatch) return;
     setSaving(true);
     try {
       const now = nowISO();
@@ -333,7 +390,7 @@ export default function ImportScreen() {
     } finally {
       setSaving(false);
     }
-  }, [parsed, account, fresh, duplicates, commitStaged]);
+  }, [parsed, account, fresh, duplicates, commitStaged, check, overrideMismatch]);
 
   const field = {
     color: c.textPrimary,
@@ -364,10 +421,30 @@ export default function ImportScreen() {
         </Pressable>
       </View>
 
-      <Text style={[t.body, { color: c.textSecondary, marginTop: sp.xs }]}>
-        Export a CSV from your bank app, pick the date range, and Finlo categorises it and
-        skips anything you already have.
-      </Text>
+      {/* The screen used to open on a wall of grey and one button. This says
+          what it can do before asking for anything, which is also the answer
+          to "does it take my PDF?" — the most common question about it. */}
+      <FeatureCard
+        tone="primary"
+        label="Whole months, in one go"
+        style={{ marginTop: sp.md }}
+        footer={
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: sp.sm }}>
+            <FeaturePill label="PDF" />
+            <FeaturePill label="Excel" />
+            <FeaturePill label="CSV" />
+            <FeaturePill label="Password-protected PDF" />
+          </View>
+        }
+      >
+        <Text style={[t.heading, { color: c.feature.primary.fg, marginTop: sp.xs }]}>
+          Export a statement from your bank app and drop it here.
+        </Text>
+        <Text style={[t.caption, { color: c.feature.primary.muted, marginTop: sp.sm }]}>
+          Finlo reads it, files what it recognises, skips anything you already have, and only
+          asks about the rest.
+        </Text>
+      </FeatureCard>
 
       {/* 1. account */}
       <Text style={[t.micro, { color: c.textMuted, marginTop: sp.xl }]}>IMPORT INTO</Text>
@@ -404,29 +481,27 @@ export default function ImportScreen() {
 
       {/* 2. file */}
       <View style={{ marginTop: sp.lg }}>
-        <Button
-          label={busy ? 'Working…' : parsed ? `Replace file (${fileName})` : 'Choose a statement file'}
-          variant={parsed ? 'secondary' : 'primary'}
-          icon="📄"
+        <FilePicker
+          busy={busy}
+          fileName={parsed ? fileName : null}
+          format={sourceFormat}
+          sections={sourceSections}
           onPress={pickFile}
         />
-
-        {sourceFormat ? (
-          <Text style={[t.micro, { color: c.textMuted, marginTop: sp.sm }]}>
-            Read as {sourceFormat.toUpperCase()}
-            {sourceSections.length ? ` · ${sourceSections.join(', ')}` : ''}
-          </Text>
-        ) : null}
       </View>
 
       {parsed && parsed.rows.length > 0 ? (
         <>
           {/* 3. window */}
           <Text style={[t.micro, { color: c.textMuted, marginTop: sp.xl }]}>DATE RANGE</Text>
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: sp.sm }}>
-            <TextInput value={from} onChangeText={setFrom} placeholder="From" placeholderTextColor={c.textMuted} autoCapitalize="none" style={field} />
-            <Text style={[t.body, { color: c.textMuted, marginHorizontal: sp.sm }]}>→</Text>
-            <TextInput value={to} onChangeText={setTo} placeholder="To" placeholderTextColor={c.textMuted} autoCapitalize="none" style={field} />
+          <View style={{ flexDirection: 'row', alignItems: 'flex-end', marginTop: sp.sm }}>
+            <View style={{ flex: 1 }}>
+              <DateField value={from} onChange={setFrom} placeholder="From" clearable />
+            </View>
+            <Text style={[t.body, { color: c.textMuted, marginHorizontal: sp.sm, paddingBottom: sp.md }]}>→</Text>
+            <View style={{ flex: 1 }}>
+              <DateField value={to} onChange={setTo} placeholder="To" clearable />
+            </View>
           </View>
           <Text style={[t.micro, { color: c.textMuted, marginTop: sp.sm }]}>
             File covers {formatDate(parsed.from!, 'medium')} → {formatDate(parsed.to!, 'medium')}
@@ -498,6 +573,10 @@ export default function ImportScreen() {
             ) : null}
           </Card>
 
+          {check ? (
+            <ReconcilePanel check={check} currency={parsed.currency} />
+          ) : null}
+
           {/* 5. preview */}
           <Text style={[t.micro, { color: c.textMuted, marginTop: sp.xl }]}>PREVIEW</Text>
           <Card padded={false} style={{ marginTop: sp.sm }}>
@@ -544,13 +623,34 @@ export default function ImportScreen() {
 
           <View style={{ marginTop: sp.xl }}>
             <Button
-              label={saving ? 'Importing…' : `Import ${fresh.length} transaction${fresh.length === 1 ? '' : 's'}`}
+              label={
+                blocked
+                  ? "Import stopped — the totals don't match"
+                  : saving
+                    ? 'Importing…'
+                    : `Import ${fresh.length} transaction${fresh.length === 1 ? '' : 's'}`
+              }
               onPress={doImport}
+              disabled={blocked || saving}
             />
           </View>
-          <Text style={[t.micro, { color: c.textMuted, marginTop: sp.md, textAlign: 'center' }]}>
-            Everything lands unreviewed so you can correct categories in Activity.
-          </Text>
+
+          {blocked ? (
+            <View style={{ marginTop: sp.md }}>
+              <Button
+                label="Import anyway, with wrong amounts possible"
+                variant="ghost"
+                tone="critical"
+                onPress={() => setOverrideMismatch(true)}
+              />
+            </View>
+          ) : (
+            <Text style={[t.micro, { color: c.textMuted, marginTop: sp.md, textAlign: 'center' }]}>
+              {overrideMismatch
+                ? 'Checked against nothing — you chose to import past a failed check.'
+                : 'Everything lands unreviewed so you can correct categories in Activity.'}
+            </Text>
+          )}
         </>
       ) : null}
 
@@ -560,6 +660,180 @@ export default function ImportScreen() {
         </View>
       ) : null}
     </ScrollView>
+  );
+}
+
+/**
+ * The one action this screen exists for, made to look like one.
+ *
+ * A plain full-width button reads as "submit"; a dashed panel reads as "put a
+ * file here", which is what is actually being asked. Once a file is chosen it
+ * becomes a summary of what was read, so the format and the sheet names —
+ * often the first sign something parsed wrong — are visible without hunting.
+ */
+function FilePicker({
+  busy,
+  fileName,
+  format,
+  sections,
+  onPress,
+}: {
+  busy: boolean;
+  fileName: string | null;
+  format: string | null;
+  sections: string[];
+  onPress: () => void;
+}) {
+  const { c, type: t, space: sp, radius: r } = useTheme();
+  const press = usePressScale(0.98);
+  const chosen = fileName != null;
+
+  return (
+    <Animated.View style={press.style}>
+      <Pressable
+        onPress={onPress}
+        onPressIn={press.onPressIn}
+        onPressOut={press.onPressOut}
+        disabled={busy}
+        accessibilityRole="button"
+        accessibilityLabel={chosen ? `Replace file ${fileName}` : 'Choose a statement file'}
+        style={{
+          borderRadius: r.lg,
+          borderWidth: chosen ? StyleSheet.hairlineWidth : 2,
+          borderStyle: chosen ? 'solid' : 'dashed',
+          borderColor: chosen ? c.border : c.accent,
+          backgroundColor: chosen ? c.surface : c.accentSubtle,
+          paddingVertical: chosen ? sp.lg : sp.xl,
+          paddingHorizontal: sp.lg,
+          alignItems: 'center',
+          opacity: busy ? 0.7 : 1,
+        }}
+      >
+        <Text style={{ fontSize: chosen ? 22 : 30 }}>{busy ? '⏳' : chosen ? '📄' : '📥'}</Text>
+
+        <Text
+          style={[t.bodyStrong, { color: chosen ? c.textPrimary : c.accent, marginTop: sp.sm }]}
+          numberOfLines={2}
+        >
+          {busy ? 'Reading it…' : chosen ? fileName : 'Choose a statement file'}
+        </Text>
+
+        <Text style={[t.micro, { color: c.textMuted, marginTop: 4, textAlign: 'center' }]}>
+          {chosen
+            ? `Read as ${(format ?? '').toUpperCase()}${sections.length ? ` · ${sections.join(', ')}` : ''} · tap to replace`
+            : 'PDF, Excel or CSV from your bank app'}
+        </Text>
+      </Pressable>
+    </Animated.View>
+  );
+}
+
+/**
+ * What the bank said, beside what we read.
+ *
+ * The point of this panel is that it is legible when it passes, not only when
+ * it fails. A check nobody ever sees until the day it stops them reads as the
+ * app breaking; a check that quietly says "126 payments out, and we found 126"
+ * on every good import is the reason the bad one is believed.
+ *
+ * Rows are two columns rather than a sentence per figure, because the question
+ * being answered is "are these the same number", and two numbers side by side
+ * answer it faster than any wording.
+ */
+function ReconcilePanel({
+  check,
+  currency,
+}: {
+  check: Reconciliation;
+  currency: CurrencyCode;
+}) {
+  const { c, type: t, space: sp, radius: r } = useTheme();
+
+  const failed = check.status === 'mismatch';
+  const tone = failed ? c.critical : check.status === 'ok' ? c.good : c.textMuted;
+
+  const show = (value: number, kind: 'money' | 'count') =>
+    kind === 'money' ? formatMoney(money(value, currency)) : String(value);
+
+  return (
+    <View
+      style={{
+        marginTop: sp.lg,
+        borderRadius: r.lg,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: failed ? c.critical : c.border,
+        backgroundColor: failed ? c.criticalSubtle : c.surface,
+        padding: sp.lg,
+      }}
+    >
+      <View style={styles.spread}>
+        <Text style={[t.micro, { color: c.textMuted }]}>CHECKED AGAINST THE STATEMENT</Text>
+        <Text style={[t.micro, { color: tone }]}>
+          {failed ? 'DOES NOT MATCH' : check.status === 'ok' ? 'MATCHES' : 'NOTHING TO CHECK'}
+        </Text>
+      </View>
+
+      <Text style={[t.body, { color: failed ? c.critical : c.textSecondary, marginTop: sp.sm }]}>
+        {check.summary}
+      </Text>
+
+      {check.checks.length > 0 ? (
+        <View style={{ marginTop: sp.lg }}>
+          <View style={[styles.spread, { paddingBottom: sp.xs }]}>
+            <Text style={[t.micro, { color: c.textMuted, flex: 1 }]} />
+            <Text style={[t.micro, { color: c.textMuted, width: 110, textAlign: 'right' }]}>
+              STATEMENT
+            </Text>
+            <Text style={[t.micro, { color: c.textMuted, width: 110, textAlign: 'right' }]}>
+              READ
+            </Text>
+          </View>
+
+          {check.checks.map((row) => (
+            <View
+              key={row.label}
+              style={[
+                styles.spread,
+                {
+                  paddingVertical: sp.sm,
+                  borderTopWidth: StyleSheet.hairlineWidth,
+                  borderTopColor: c.border,
+                },
+              ]}
+            >
+              <Text style={[t.caption, { color: c.textSecondary, flex: 1 }]}>{row.label}</Text>
+              <Text
+                style={[t.caption, { color: c.textSecondary, width: 110, textAlign: 'right' }]}
+                numberOfLines={1}
+              >
+                {show(row.declared, row.kind)}
+              </Text>
+              <Text
+                style={[
+                  t.caption,
+                  {
+                    color: row.ok ? c.textPrimary : c.critical,
+                    width: 110,
+                    textAlign: 'right',
+                    fontVariant: ['tabular-nums'],
+                  },
+                ]}
+                numberOfLines={1}
+              >
+                {show(row.actual, row.kind)}
+              </Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
+
+      {check.unreadable.length > 0 ? (
+        <Text style={[t.micro, { color: c.textMuted, marginTop: sp.md }]}>
+          {check.unreadable.join(', ')} printed totals that do not add up on their own, so they
+          were left out of this check rather than used to block the import.
+        </Text>
+      ) : null}
+    </View>
   );
 }
 

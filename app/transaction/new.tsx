@@ -28,6 +28,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { Button, Card } from '../../src/components/ui/Primitives';
+import { DateField } from '../../src/components/ui/DateField';
 import { useAppStore } from '../../src/store/useAppStore';
 import { currencyMeta, formatMoney, fromDecimal, money, parseMoney } from '../../src/core/money';
 import { formatDate, isValidISODate, today } from '../../src/core/dates';
@@ -297,19 +298,8 @@ export default function TransactionFormScreen() {
         </Field>
 
         <Field label="DATE">
-          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <TextInput
-              value={date}
-              onChangeText={setDate}
-              placeholder="YYYY-MM-DD"
-              placeholderTextColor={c.textMuted}
-              style={[t.body, tabularNumbers, { color: c.textPrimary, flex: 1, paddingVertical: sp.sm }]}
-              accessibilityLabel="Date"
-            />
-            <Text style={[t.micro, { color: c.textMuted }]}>
-              {isValidISODate(date) ? formatDate(date, 'medium') : 'invalid'}
-            </Text>
-          </View>
+          {/* A spend already happened, so the calendar blocks the future. */}
+          <DateField value={date} onChange={setDate} maxToday />
           <View style={{ flexDirection: 'row', marginTop: sp.sm }}>
             <QuickDate label="Today" onPress={() => setDate(today())} />
             <QuickDate label="Yesterday" onPress={() => setDate(shiftDays(today(), -1))} />

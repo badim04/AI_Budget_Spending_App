@@ -33,10 +33,28 @@ import type { CategoryTotal, PeriodRange } from '../../src/core/types';
 import { budgetStateColor } from '../../src/theme/tokens';
 import { formatMoney, money } from '../../src/core/money';
 import { periodProgress, formatDate, daysRemaining, today } from '../../src/core/dates';
-import { isCurrentMonth, monthOf } from '../../src/core/periods';
+import {
+  elapsedRange,
+  isCurrentMonth,
+  matchingSlice,
+  monthOf,
+  previousMonth,
+} from '../../src/core/periods';
 import { PeriodBar } from '../../src/components/ui/PeriodBar';
 import { FeatureCard, FeaturePill } from '../../src/components/ui/FeatureCard';
+import { Mascot } from '../../src/components/art/Mascot';
+import {
+  Banner,
+  HeroCarousel,
+  MiniCard,
+  ScrollRow,
+  Tile,
+  TileGrid,
+} from '../../src/components/ui/Tiles';
 import { useDashboardData } from '../../src/hooks/useDashboardData';
+import { useAppStore } from '../../src/store/useAppStore';
+import { comparePeriods, totalIncome, type AnalyticsContext } from '../../src/core/analytics';
+import { greeting, spendSummary, topNudges } from '../../src/core/voice';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { Button } from '../../src/components/ui/Primitives';
@@ -57,6 +75,12 @@ export default function DashboardScreen() {
   // is 100% elapsed, which is the truth for a month that is over.
   const { data, loading, refresh } = useDashboardData(live ? undefined : range.end);
 
+  const transactions = useAppStore((s) => s.transactions);
+  const categories = useAppStore((s) => s.categories);
+  const accounts = useAppStore((s) => s.accounts);
+  const settings = useAppStore((s) => s.settings);
+  const fxTable = useAppStore((s) => s.fxTable);
+
   // Web stretches to the browser width; a money column past ~560pt just gets
   // harder to scan, so the content is centred and capped.
   // Measured from the container, not the window: the window width ignores the
@@ -72,6 +96,64 @@ export default function DashboardScreen() {
   /** Everything budget-derived is meaningless until at least one exists. */
   const budgeted = data.allocated.minor > 0;
 
+  const analytics = useMemo<AnalyticsContext>(
+    () => ({
+      transactions,
+      categories,
+      accounts,
+      displayCurrency: data.displayCurrency,
+      fx: fxTable(),
+      asOf: data.asOf,
+    }),
+    [transactions, categories, accounts, data.displayCurrency, data.asOf, fxTable]
+  );
+
+  /**
+   * "₦42,300 less than last month" — the only thing that makes a spend total
+   * mean anything. Compared like for like: an unfinished month is measured
+   * against the same days of the one before.
+   */
+  /** The single most interesting category move, in the app's own words. */
+  const headline = useMemo(() => {
+    const elapsed = live ? elapsedRange(range, data.asOf) : range;
+    const baseline = live ? matchingSlice(previousMonth(range), elapsed) : previousMonth(range);
+    const { categories: moved } = comparePeriods(elapsed, baseline, analytics);
+    return topNudges(
+      moved.map((d) => ({
+        categoryName: d.categoryName,
+        icon: d.icon,
+        currentMinor: d.current.minor,
+        previousMinor: d.previous.minor,
+      })),
+      data.displayCurrency,
+      1
+    )[0];
+  }, [range, live, data.asOf, data.displayCurrency, analytics]);
+
+  /** Money in for the period on screen, on the same basis as the spend total. */
+  const income = useMemo(
+    () => totalIncome(range, analytics),
+    [range, analytics]
+  );
+
+  /** How many rows are still waiting on a decision. */
+  const unreviewed = useMemo(
+    () => transactions.filter((tx) => !tx.reviewed && !tx.deletedAt).length,
+    [transactions]
+  );
+
+  const verdict = useMemo(() => {
+    const elapsed = live ? elapsedRange(range, data.asOf) : range;
+    const baseline = live ? matchingSlice(previousMonth(range), elapsed) : previousMonth(range);
+    const comparison = comparePeriods(elapsed, baseline, analytics);
+    return spendSummary(
+      comparison.current.minor,
+      comparison.previous.minor,
+      data.displayCurrency,
+      { partial: live }
+    );
+  }, [range, live, data.asOf, data.displayCurrency, analytics]);
+
   // An empty dashboard is mostly zeros and empty charts, which reads as broken
   // rather than as new. Say what to do instead.
   if (!data.hasData) {
@@ -86,9 +168,9 @@ export default function DashboardScreen() {
       >
         <AppHeader />
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-        <Ionicons name="pie-chart-outline" size={40} color={c.textMuted} />
-        <Text style={[t.title, { color: c.textPrimary, marginTop: sp.lg, textAlign: 'center' }]}>
-          Nothing to show yet
+        <Mascot pose="wave" size={132} />
+        <Text style={[t.title, { color: c.textPrimary, marginTop: sp.md, textAlign: 'center' }]}>
+          Hi, I’m Fin 👋
         </Text>
         <Text
           style={[
@@ -96,8 +178,8 @@ export default function DashboardScreen() {
             { color: c.textSecondary, marginTop: sp.sm, textAlign: 'center', maxWidth: 320 },
           ]}
         >
-          Add a transaction, snap a receipt, or load the demo data to see what the dashboard
-          looks like with a few months of history behind it.
+          Add a transaction, snap a receipt, or import a statement, and I’ll keep track of
+          where your money goes. Load the demo data if you’d rather look around first.
         </Text>
         <View style={{ marginTop: sp.xl, width: 240 }}>
           <Button label="Add a transaction" onPress={() => router.push('/transaction/new')} />
@@ -131,6 +213,18 @@ export default function DashboardScreen() {
     >
       <AppHeader />
 
+      {/* A person, not a report. The screen opens by saying hello and telling
+          you whether the number below is good news, before you have to work
+          that out from a chart. */}
+      <View style={{ marginBottom: sp.md }}>
+        <Text style={[t.title, { color: c.textPrimary }]}>
+          {greeting(new Date(), settings.user_name)}
+        </Text>
+        <Text style={[t.body, { color: c.textSecondary, marginTop: 2 }]}>
+          Let’s see how your money is doing.
+        </Text>
+      </View>
+
       {/* ---------------------------------------------------- 1. Can I spend? */}
       <PeriodBar
         range={range}
@@ -138,52 +232,182 @@ export default function DashboardScreen() {
         subtitle={live ? `${daysLeft} day${daysLeft === 1 ? '' : 's'} left` : range.label}
       />
 
+      {/* The headline, as a deck you swipe rather than one static block. */}
       <View style={{ marginTop: sp.md, marginBottom: sp.lg }}>
-        {budgeted ? (
-          <FeatureCard
-            tone={data.shortfallDate ? 'spend' : 'primary'}
-            label={live ? 'Safe to spend' : `Was safe to spend in ${range.label}`}
-            footer={
-              <View style={{ flexDirection: 'row', gap: sp.sm }}>
-                <FeaturePill
-                  label={`${formatMoney(data.safeToSpendPerDay, { compactDecimals: true })} / day`}
-                  tone={data.shortfallDate ? 'spend' : 'primary'}
-                />
-                <FeaturePill
-                  label={
-                    data.shortfallDate
-                      ? `Tight from ${formatDate(data.shortfallDate, 'short')}`
-                      : 'Covers the period'
-                  }
-                  tone={data.shortfallDate ? 'spend' : 'primary'}
-                />
-              </View>
-            }
-          >
-            <AmountText
-              value={data.safeToSpend}
-              size="hero"
-              animate
-              color={c.feature[data.shortfallDate ? 'spend' : 'primary'].fg}
-            />
-          </FeatureCard>
-        ) : (
-          /* Safe-to-spend is derived entirely from budget envelopes, so with no
-             budgets it is not a small number — it is not a number at all.
-             Showing the real spend and saying what is missing beats ₦0.00. */
+        <HeroCarousel>
+          {budgeted ? (
+            <FeatureCard
+              tone={data.shortfallDate ? 'spend' : 'primary'}
+              label={live ? 'Safe to spend' : `Was safe to spend in ${range.label}`}
+              footer={
+                <View style={{ flexDirection: 'row', gap: sp.sm }}>
+                  <FeaturePill
+                    label={`${formatMoney(data.safeToSpendPerDay, { compactDecimals: true })} / day`}
+                    tone={data.shortfallDate ? 'spend' : 'primary'}
+                  />
+                  <FeaturePill
+                    label={
+                      data.shortfallDate
+                        ? `Tight from ${formatDate(data.shortfallDate, 'short')}`
+                        : 'Covers the period'
+                    }
+                    tone={data.shortfallDate ? 'spend' : 'primary'}
+                  />
+                </View>
+              }
+            >
+              <AmountText
+                value={data.safeToSpend}
+                size="hero"
+                animate
+                color={c.feature[data.shortfallDate ? 'spend' : 'primary'].fg}
+              />
+              <Text
+                style={[
+                  t.caption,
+                  { color: c.feature[data.shortfallDate ? 'spend' : 'primary'].muted, marginTop: sp.xs },
+                ]}
+              >
+                {verdict.icon} {verdict.headline}
+              </Text>
+            </FeatureCard>
+          ) : null}
+
+          {/* Safe-to-spend comes entirely from budget envelopes, so without one
+              it is not a small number — it is not a number. Spend always is. */}
           <FeatureCard
             tone="savings"
             label={live ? 'Spent this month' : `Spent in ${range.label}`}
             footer={
-              <Pressable onPress={() => router.push('/budgets')} accessibilityRole="button">
-                <FeaturePill label="Set a budget to see safe-to-spend  ›" tone="savings" />
-              </Pressable>
+              budgeted ? (
+                <FeaturePill label={`${data.categories.length} categories`} tone="savings" />
+              ) : (
+                <Pressable onPress={() => router.push('/budgets')} accessibilityRole="button">
+                  <FeaturePill label="Set a budget to see safe-to-spend  ›" tone="savings" />
+                </Pressable>
+              )
             }
           >
             <AmountText value={data.spent} size="hero" animate color={c.feature.savings.fg} />
+            <Text style={[t.caption, { color: c.feature.savings.muted, marginTop: sp.xs }]}>
+              {verdict.icon} {verdict.headline}
+            </Text>
           </FeatureCard>
-        )}
+
+          <FeatureCard
+            tone="calm"
+            label="Money in"
+            footer={<FeaturePill label={`${daysLeft} days left in ${range.label}`} tone="calm" />}
+          >
+            <AmountText value={income} size="hero" animate color={c.feature.calm.fg} />
+            <Text style={[t.caption, { color: c.feature.calm.muted, marginTop: sp.xs }]}>
+              {income.minor > data.spent.minor
+                ? '💚 More came in than went out'
+                : '👀 You spent more than came in'}
+            </Text>
+          </FeatureCard>
+        </HeroCarousel>
       </View>
+
+      {/* What people actually came here to do, in a row that runs off-screen so
+          it is obvious there is more of it. */}
+      <ScrollRow gutter={gutter}>
+        <MiniCard
+          tone="violet"
+          glyph="✏️"
+          title="Add"
+          subtitle="a transaction"
+          index={0}
+          onPress={() => router.push('/transaction/new')}
+        />
+        <MiniCard
+          tone="blue"
+          glyph="📄"
+          title="Import"
+          subtitle="a statement"
+          index={1}
+          onPress={() => router.push('/import')}
+        />
+        <MiniCard
+          tone="teal"
+          glyph="📸"
+          title="Snap"
+          subtitle="a receipt"
+          index={2}
+          onPress={() => router.push('/capture')}
+        />
+        <MiniCard
+          tone="amber"
+          glyph="🎯"
+          title="Goals"
+          subtitle="track one"
+          index={3}
+          onPress={() => router.push('/goals')}
+        />
+        <MiniCard
+          tone="pink"
+          glyph="📊"
+          title="Report"
+          subtitle="export it"
+          index={4}
+          onPress={() => router.push('/reports')}
+        />
+      </ScrollRow>
+
+      {/* One thing worth knowing, in the app's own voice. Absent when there is
+          nothing worth saying — see `core/voice.ts`. */}
+      {headline ? (
+        <Banner
+          tone={headline.tone === 'good' ? 'green' : headline.tone === 'watch' ? 'amber' : 'blue'}
+          glyph={headline.icon}
+          title={headline.headline}
+          body={headline.body}
+          style={{ marginTop: sp.xl }}
+          onPress={() => router.push('/insights')}
+        />
+      ) : null}
+
+      {/* Four destinations, four colours. You learn the colours and stop
+          reading the labels — which is the entire point of a tile grid. */}
+      <SectionHeader title="Your money" />
+      <TileGrid>
+        <Tile
+          tone="violet"
+          tag={budgeted ? 'Review' : 'Set up'}
+          title="Budgets"
+          subtitle={budgeted ? `${data.budgets.length} envelopes` : 'Not set up yet'}
+          glyph="💜"
+          index={0}
+          onPress={() => router.push('/budgets')}
+        />
+        <Tile
+          tone="green"
+          tag="Track"
+          title="Goals"
+          subtitle="Save toward something"
+          glyph="🎯"
+          index={1}
+          onPress={() => router.push('/goals')}
+        />
+        <Tile
+          tone="blue"
+          tag="Explore"
+          title="Insights"
+          subtitle="Month against month"
+          glyph="📈"
+          index={2}
+          onPress={() => router.push('/insights')}
+        />
+        <Tile
+          tone="pink"
+          tag={unreviewed > 0 ? `${unreviewed} left` : 'All done'}
+          title="Review"
+          subtitle={unreviewed > 0 ? 'Uncategorised transactions' : 'Nothing waiting'}
+          glyph="🗂️"
+          index={3}
+          onPress={() => router.push('/transactions')}
+        />
+      </TileGrid>
 
       {/* ------------------------------------------------- 2. Am I on track? */}
       {/* Without a budget this card is the hero figure printed twice under a
@@ -271,31 +495,50 @@ export default function DashboardScreen() {
 
       {data.upcoming.length > 0 ? (
         <>
-          <SectionHeader title="Coming up" action="All bills" />
-          <Card padded={false}>
-            {data.upcoming.map((bill, i) => (
-              <View
-                key={bill.id}
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: sp.lg,
-                  borderBottomWidth: i === data.upcoming.length - 1 ? 0 : StyleSheet.hairlineWidth,
-                  borderBottomColor: c.border,
-                }}
-              >
-                <View style={{ flex: 1 }}>
-                  <Text style={[t.body, { color: c.textPrimary }]}>{bill.name}</Text>
-                  <Text style={[t.micro, { color: c.textMuted, marginTop: 2 }]}>
-                    {formatDate(bill.date, 'short')}
-                    {bill.variable ? ' · amount varies' : ''}
+          {/* A sideways row of bill cards, not a divided list. Bills are a
+              handful of separate things arriving on separate days — a stack of
+              hairline rows makes them look like one ledger. */}
+          <ScrollRow title="Coming up" action="All bills" onAction={() => router.push('/budgets')} gutter={gutter}>
+            {data.upcoming.map((bill, i) => {
+              const tones = ['blue', 'amber', 'teal', 'pink', 'violet', 'green'] as const;
+              const tone = tones[i % tones.length];
+              return (
+                <View
+                  key={bill.id}
+                  style={{
+                    width: 150,
+                    borderRadius: r.lg,
+                    backgroundColor: c.tile[tone].bg,
+                    borderWidth: StyleSheet.hairlineWidth,
+                    borderColor: c.tile[tone].border,
+                    padding: sp.md,
+                  }}
+                >
+                  <View
+                    style={{
+                      alignSelf: 'flex-start',
+                      backgroundColor: c.tile[tone].tag,
+                      borderRadius: r.pill,
+                      paddingHorizontal: sp.sm,
+                      paddingVertical: 2,
+                    }}
+                  >
+                    <Text style={[t.micro, { color: '#ffffff' }]}>
+                      {formatDate(bill.date, 'short').toUpperCase()}
+                    </Text>
+                  </View>
+
+                  <Text style={[t.bodyStrong, { color: c.textPrimary, marginTop: sp.sm }]} numberOfLines={1}>
+                    {bill.name}
                   </Text>
+                  <AmountText value={bill.amount} size="body" color={c.tile[tone].fg} />
+                  {bill.variable ? (
+                    <Text style={[t.micro, { color: c.textMuted, marginTop: 2 }]}>amount varies</Text>
+                  ) : null}
                 </View>
-                <AmountText value={bill.amount} size="body" color={c.textSecondary} />
-              </View>
-            ))}
-          </Card>
+              );
+            })}
+          </ScrollRow>
         </>
       ) : null}
 
@@ -304,6 +547,7 @@ export default function DashboardScreen() {
       <Card>
         <CategoryBreakdown
           rows={data.categories}
+          grid
           onSelect={(_, row) => openCategory(row, range)}
         />
       </Card>
@@ -312,33 +556,34 @@ export default function DashboardScreen() {
       {data.insights.length > 0 ? (
         <>
           <SectionHeader title="Worth knowing" />
-          {data.insights.slice(0, 3).map((insight) => (
-            <Card key={insight.id} style={{ marginBottom: sp.md }}>
-              <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
-                <View
-                  style={{
-                    width: 3,
-                    alignSelf: 'stretch',
-                    borderRadius: 2,
-                    marginRight: sp.md,
-                    backgroundColor:
-                      insight.severity === 'critical'
-                        ? c.critical
-                        : insight.severity === 'warning'
-                          ? c.warning
-                          : insight.severity === 'positive'
-                            ? c.good
-                            : c.info,
-                  }}
-                />
-                <View style={{ flex: 1 }}>
-                  <Text style={[t.bodyStrong, { color: c.textPrimary }]}>{insight.title}</Text>
-                  <Text style={[t.body, { color: c.textSecondary, marginTop: sp.xs }]}>
-                    {insight.body}
-                  </Text>
-                </View>
-              </View>
-            </Card>
+          {/* Banners rather than bordered cards with a colour strip: the strip
+              was the only thing carrying the severity, and it was three pixels
+              wide. A tinted panel with a glyph says it before the words do. */}
+          {data.insights.slice(0, 3).map((insight, i) => (
+            <Banner
+              key={insight.id}
+              tone={
+                insight.severity === 'critical'
+                  ? 'pink'
+                  : insight.severity === 'warning'
+                    ? 'amber'
+                    : insight.severity === 'positive'
+                      ? 'green'
+                      : 'blue'
+              }
+              glyph={
+                insight.severity === 'critical'
+                  ? '🚨'
+                  : insight.severity === 'warning'
+                    ? '👀'
+                    : insight.severity === 'positive'
+                      ? '💚'
+                      : '💡'
+              }
+              title={insight.title}
+              body={insight.body}
+              style={{ marginBottom: sp.md }}
+            />
           ))}
         </>
       ) : null}

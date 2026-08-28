@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { AmountText, Button, Card, Pill, SectionHeader } from '../../src/components/ui/Primitives';
 import { useAppStore } from '../../src/store/useAppStore';
+import { DateField } from '../../src/components/ui/DateField';
 import { formatMoney, money, parseMoney } from '../../src/core/money';
 import { daysBetween, formatDate, nowISO, today } from '../../src/core/dates';
 import type { Goal } from '../../src/core/types';
@@ -294,17 +295,15 @@ function GoalComposer({
         style={field}
       />
 
-      <Text style={[t.micro, { color: c.textMuted, marginTop: sp.lg }]}>
-        TARGET DATE (OPTIONAL)
-      </Text>
-      <TextInput
-        value={date}
-        onChangeText={setDate}
-        placeholder="YYYY-MM-DD"
-        placeholderTextColor={c.textMuted}
-        autoCapitalize="none"
-        style={field}
-      />
+      <View style={{ marginTop: sp.lg }}>
+        <DateField
+          label="TARGET DATE (OPTIONAL)"
+          value={date}
+          onChange={setDate}
+          placeholder="No deadline"
+          clearable
+        />
+      </View>
 
       <Text style={[t.micro, { color: c.textMuted, marginTop: sp.lg }]}>ICON</Text>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: sp.sm }}>

@@ -11,10 +11,11 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { existsSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { extractPdfText, isPdf, parseCMap } from '@/ingest/pdf/extract';
 import { readStatement, stitchPdfRows, decodeText, formatFromName } from '@/ingest/statement/sources';
 import { parseStatementGrid, summarise } from '@/ingest/statement/parse';
+import { reconcileStatement } from '@/ingest/statement/reconcile';
 
 /** Fixed so the relative-date fallback cannot drift with the wall clock. */
 const TODAY = '2026-08-26';
@@ -205,8 +206,14 @@ describe.skipIf(!hasPdf || !hasXlsx)('PDF and XLSX agree', () => {
   const SAVINGS_DEBIT = 1473;
   const SAVINGS_CREDIT = 504;
 
+  /** Both sections, which is what either format should now produce. */
+  const TOTAL_DEBIT = WALLET_DEBIT + SAVINGS_DEBIT;
+  const TOTAL_CREDIT = WALLET_CREDIT + SAVINGS_CREDIT;
+  const DEBIT_COUNT = 126 + 2;
+  const CREDIT_COUNT = 45 + 56;
+
   const parseFile = (path: string, name: string) => {
-    const source = readStatement(bytesOf(path), name);
+    const source = readStatement(bytesOf(path), name, { currency: 'NGN' });
     return { source, parsed: parseStatementGrid(source.rows, { currency: 'NGN', today: TODAY }) };
   };
 
@@ -215,9 +222,9 @@ describe.skipIf(!hasPdf || !hasXlsx)('PDF and XLSX agree', () => {
     const totals = summarise(parsed.rows);
 
     expect(parsed.problems).toEqual([]);
-    expect(totals.inflowMinor).toBe(WALLET_CREDIT);
-    expect(totals.outflowMinor).toBe(WALLET_DEBIT);
-    expect(parsed.rows.length).toBe(171); // 126 debits + 45 credits
+    expect(totals.inflowMinor).toBe(TOTAL_CREDIT);
+    expect(totals.outflowMinor).toBe(TOTAL_DEBIT);
+    expect(parsed.rows.length).toBe(DEBIT_COUNT + CREDIT_COUNT);
   });
 
   it('the XLSX matches the totals for both of its sheets', () => {
@@ -225,8 +232,67 @@ describe.skipIf(!hasPdf || !hasXlsx)('PDF and XLSX agree', () => {
     const totals = summarise(parsed.rows);
 
     expect(parsed.problems).toEqual([]);
-    expect(totals.inflowMinor).toBe(WALLET_CREDIT + SAVINGS_CREDIT);
-    expect(totals.outflowMinor).toBe(WALLET_DEBIT + SAVINGS_DEBIT);
+    expect(totals.inflowMinor).toBe(TOTAL_CREDIT);
+    expect(totals.outflowMinor).toBe(TOTAL_DEBIT);
+    expect(parsed.rows.length).toBe(DEBIT_COUNT + CREDIT_COUNT);
+  });
+
+  /**
+   * The savings section used to vanish from the PDF without a trace.
+   *
+   * It is printed as a second table on its own x positions, so anchors
+   * clustered across the whole file put every one of its rows a column to the
+   * right of where the header said. `parseStatementGrid` read an empty date
+   * cell and skipped them — no exception, no problem entry, 58 transactions
+   * gone, and a suite written against wallet-only totals that called it a pass.
+   */
+  it('reads the savings section of the PDF, not just the wallet', () => {
+    const { source, parsed } = parseFile(PDF, 's.pdf');
+
+    expect(source.declared.map((d) => d.name)).toEqual(['Wallet Account', 'Savings Account']);
+
+    const interest = parsed.rows.filter((r) => /OWealth Interest Earned/i.test(r.description));
+    expect(interest.length).toBe(56);
+    expect(interest.every((r) => r.amountMinor === 9)).toBe(true);
+  });
+
+  it('reconciles both formats against the totals printed in the file', () => {
+    for (const [path, name] of [
+      [PDF, 's.pdf'],
+      [XLSX_FILE, 's.xlsx'],
+    ] as const) {
+      const { source, parsed } = parseFile(path, name);
+      const check = reconcileStatement(source.declared, parsed.rows);
+
+      expect(check.unreadable, `${name} preamble`).toEqual([]);
+      expect(check.checks.map((x) => x.label).sort(), `${name} coverage`).toEqual([
+        'Money in',
+        'Money out',
+        'Payments in',
+        'Payments out',
+      ]);
+      expect(
+        check.checks.filter((x) => !x.ok).map((x) => `${x.label} off by ${x.delta}`),
+        `${name} reconciliation`
+      ).toEqual([]);
+      expect(check.status, name).toBe('ok');
+    }
+  });
+
+  /**
+   * The check has to be able to fail, or it is decoration.
+   *
+   * Dropping a section from the declaration is the shape of the bug it exists
+   * to catch: rows we read that the statement never claimed, or the reverse.
+   */
+  it('refuses a parse that disagrees with the declared totals', () => {
+    const { source, parsed } = parseFile(PDF, 's.pdf');
+    const walletOnly = source.declared.filter((d) => d.name === 'Wallet Account');
+
+    const check = reconcileStatement(walletOnly, parsed.rows);
+    expect(check.status).toBe('mismatch');
+    expect(check.checks.find((x) => x.label === 'Payments in')!.delta).toBe(56);
+    expect(check.summary).toMatch(/more than that were read/);
   });
 
   it('every transaction in the PDF is in the XLSX, to the kobo', () => {

@@ -8,12 +8,21 @@
  */
 
 import React, { useCallback, useState } from 'react';
-import { ScrollView, View, Text, ActivityIndicator, Alert, Platform } from 'react-native';
+import {
+  ScrollView,
+  View,
+  Text,
+  ActivityIndicator,
+  Alert,
+  Platform,
+  StyleSheet,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useTheme } from '../../src/theme/ThemeProvider';
-import { Button, Card, Pill } from '../../src/components/ui/Primitives';
+import { Tile, TileGrid, type TileTone } from '../../src/components/ui/Tiles';
+import { Button, Card, Pill, SectionHeader } from '../../src/components/ui/Primitives';
 import { useAppStore } from '../../src/store/useAppStore';
 import {
   CancelledError,
@@ -176,22 +185,35 @@ export default function CaptureScreen() {
         The less of this you do by hand, the better the numbers get.
       </Text>
 
-      <Method
-        icon="camera-outline"
-        title="Snap a receipt"
-        body={
-          ocr.configured
-            ? 'Photograph it and the total, merchant, date and line items are read automatically.'
-            : 'Photograph it and the receipt is stored and searchable. Add an OCR key in Settings to have the amounts read for you.'
-        }
-        badge={ocr.configured ? { label: `OCR: ${ocr.name}`, tone: 'good' as const } : { label: 'Manual amounts', tone: 'neutral' as const }}
-        action={Platform.OS === 'web' ? 'Choose a photo' : 'Open camera'}
-        busy={busy === 'camera'}
-        onPress={() => runCapture('camera')}
-      />
+      {/* The two fastest ways in, side by side, before the long-form list.
+          Five identical stacked cards made every option look equally likely;
+          in practice people snap a receipt or type one in. */}
+      <TileGrid>
+        <Tile
+          tone="violet"
+          tag={busy === 'camera' ? 'Working' : Platform.OS === 'web' ? 'Photo' : 'Camera'}
+          title="Snap a receipt"
+          subtitle={ocr.configured ? `Read by ${ocr.name}` : 'Stored and searchable'}
+          glyph="📸"
+          index={0}
+          onPress={() => runCapture('camera')}
+        />
+        <Tile
+          tone="pink"
+          tag="Fastest"
+          title="Add manually"
+          subtitle="Amount, merchant, done"
+          glyph="✏️"
+          index={1}
+          onPress={() => router.push('/transaction/new')}
+        />
+      </TileGrid>
+
+      <SectionHeader title="Bring it in automatically" />
 
       <Method
         icon="images-outline"
+        tone="blue"
         title="Import from photos"
         body="Pick a receipt you already saved and process it the same way."
         action="Choose image"
@@ -201,6 +223,7 @@ export default function CaptureScreen() {
 
       <Method
         icon="albums-outline"
+        tone="teal"
         title="Scan several at once"
         body="Select up to 20 receipts. Each one is read, then you confirm the whole batch on one screen before anything is saved."
         badge={{ label: 'Batch', tone: 'accent' as const }}
@@ -217,6 +240,7 @@ export default function CaptureScreen() {
 
       <Method
         icon="mail-outline"
+        tone="amber"
         title="Connect Gmail"
         body="Read-only. Scans only bank alerts and merchant receipts, files them automatically, and never sends mail."
         badge={
@@ -231,19 +255,22 @@ export default function CaptureScreen() {
       />
 
       <Method
-        icon="create-outline"
-        title="Add manually"
-        body="Amount, merchant, done. The category is guessed from what you have filed before."
-        action="New transaction"
-        primary
-        onPress={() => router.push('/transaction/new')}
+        icon="document-text-outline"
+        tone="green"
+        title="Import a bank statement"
+        body="A whole month at once. PDF, Excel or CSV from your bank app — Finlo files what it recognises and only asks about the rest."
+        badge={{ label: 'PDF · Excel · CSV', tone: 'accent' as const }}
+        action="Choose a statement"
+        onPress={() => router.push('/import')}
       />
+
     </ScrollView>
   );
 }
 
 function Method({
   icon,
+  tone = 'violet',
   title,
   body,
   action,
@@ -253,6 +280,8 @@ function Method({
   badge,
 }: {
   icon: React.ComponentProps<typeof Ionicons>['name'];
+  /** Each way in gets its own colour, so the list reads as choices. */
+  tone?: TileTone;
   title: string;
   body: string;
   action: string;
@@ -265,7 +294,21 @@ function Method({
   return (
     <Card style={{ marginTop: sp.lg }}>
       <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
-        <Ionicons name={icon} size={22} color={c.accent} style={{ marginRight: sp.md, marginTop: 2 }} />
+        <View
+          style={{
+            width: 42,
+            height: 42,
+            borderRadius: 21,
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: c.tile[tone].bg,
+            borderWidth: StyleSheet.hairlineWidth,
+            borderColor: c.tile[tone].border,
+            marginRight: sp.md,
+          }}
+        >
+          <Ionicons name={icon} size={20} color={c.tile[tone].tag} />
+        </View>
         <View style={{ flex: 1 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
             <Text style={[t.heading, { color: c.textPrimary, marginRight: sp.sm }]}>{title}</Text>
@@ -281,7 +324,7 @@ function Method({
                 </Text>
               </View>
             ) : (
-              <Button label={action} variant={primary ? 'primary' : 'secondary'} onPress={onPress} />
+              <Button label={action} onPress={onPress} />
             )}
           </View>
         </View>

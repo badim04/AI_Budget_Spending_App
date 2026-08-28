@@ -1,9 +1,18 @@
 import React, { useMemo, useState } from 'react';
-import { ScrollView, View, Text, TextInput, useWindowDimensions, StyleSheet } from 'react-native';
+import {
+  ScrollView,
+  View,
+  Text,
+  TextInput,
+  useWindowDimensions,
+  StyleSheet,
+  Animated,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { AmountText, Card, SectionHeader } from '../../src/components/ui/Primitives';
 import { CategoryBreakdown } from '../../src/components/charts/CategoryBreakdown';
+import { Ring, RingLegend, type RingSlice } from '../../src/components/charts/Ring';
 import type { CategoryTotal, PeriodRange } from '../../src/core/types';
 import { formatMoney, money } from '../../src/core/money';
 import {
@@ -16,7 +25,7 @@ import {
   comparePeriods,
   type AnalyticsContext,
 } from '../../src/core/analytics';
-import { isValidISODate, today } from '../../src/core/dates';
+import { formatDate, isValidISODate, today } from '../../src/core/dates';
 import {
   customRange,
   elapsedRange,
@@ -27,6 +36,16 @@ import {
   sameMonthLastYear,
 } from '../../src/core/periods';
 import { PeriodBar } from '../../src/components/ui/PeriodBar';
+import { FeatureCard, FeaturePill } from '../../src/components/ui/FeatureCard';
+import {
+  Banner,
+  ScrollRow,
+  SegmentedControl,
+  StatRow,
+  StatTile,
+} from '../../src/components/ui/Tiles';
+import { useEnter } from '../../src/theme/motion';
+import { DateField } from '../../src/components/ui/DateField';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Pressable } from 'react-native';
@@ -67,37 +86,6 @@ function ModeChip({
     >
       <Text style={[t.caption, { color: active ? c.accent : c.textSecondary }]}>{label}</Text>
     </Pressable>
-  );
-}
-
-function DateField({
-  value,
-  onChange,
-  placeholder,
-}: {
-  value: string;
-  onChange: (next: string) => void;
-  placeholder: string;
-}) {
-  const { c, radius: r, space: sp } = useTheme();
-  return (
-    <TextInput
-      value={value}
-      onChangeText={onChange}
-      placeholder={placeholder}
-      placeholderTextColor={c.textMuted}
-      autoCapitalize="none"
-      autoCorrect={false}
-      style={{
-        flex: 1,
-        color: c.textPrimary,
-        backgroundColor: c.surfaceSunken,
-        borderRadius: r.md,
-        paddingHorizontal: sp.md,
-        paddingVertical: sp.md,
-        fontSize: 14,
-      }}
-    />
   );
 }
 
@@ -162,6 +150,25 @@ export default function InsightsScreen() {
     () => comparePeriods(elapsed, trimBaseline ? matchingSlice(baseline, elapsed) : baseline, ctx),
     [elapsed, baseline, trimBaseline, ctx]
   );
+
+  /**
+   * Name the slice, not the month it came out of.
+   *
+   * When this month is still running the baseline is trimmed to the same number
+   * of days, so the figure beside "JULY 2026" was July 1st to the 28th — while
+   * paging back to July showed the whole month under the very same heading.
+   * Two different numbers under one label reads as a bug in the totals, and the
+   * "at the same point" line underneath was doing all the work of explaining a
+   * heading that flatly contradicted it. A trimmed baseline says so in the
+   * heading, where the number is.
+   */
+  const baselineLabel = useMemo(() => {
+    if (mode === 'custom' && custom) return `${custom.start} → ${custom.end}`;
+    const whole = mode === 'year' ? sameMonthLastYear(range) : previousMonth(range);
+    if (!trimBaseline) return whole.label;
+    const slice = matchingSlice(whole, elapsed);
+    return `${formatDate(slice.start, 'short')} – ${formatDate(slice.end, 'short')}`;
+  }, [mode, custom, range, trimBaseline, elapsed]);
   const rate = savingsRate(range, ctx);
   const runway = runwayMonths(ctx);
   const worth = netWorth(ctx, asOf);
@@ -170,6 +177,28 @@ export default function InsightsScreen() {
     categoryTotals(range, ctx, 'expense'),
     7,
     settings.display_currency ?? 'NGN'
+  );
+
+  /**
+   * The ring reads the same rows the bars do.
+   *
+   * Two charts of the same thing that disagree is worse than one chart, and
+   * `withOtherBucket` has already folded the long tail into a single "Other"
+   * — so the ring gets exactly the rows on screen, in the same order, wearing
+   * the same series colours. Nothing here picks a colour.
+   */
+  const ringSlices: RingSlice[] = useMemo(
+    () =>
+      categoryRows.map((row) => ({
+        key: row.categoryId,
+        value: Math.abs(row.total.minor),
+        color: row.color,
+      })),
+    [categoryRows]
+  );
+  const ringTotal = useMemo(
+    () => ringSlices.reduce((sum, slice) => sum + slice.value, 0),
+    [ringSlices]
   );
 
   return (
@@ -209,79 +238,138 @@ export default function InsightsScreen() {
         </Pressable>
       </View>
 
-      <View style={{ flexDirection: 'row', marginTop: sp.lg }}>
-        <Stat
-          label="Savings rate"
-          value={rate == null ? '—' : Math.round(rate * 100) + '%'}
-          hint={rate == null ? 'No income recorded' : rate > 0.2 ? 'Above the 20% mark' : 'Below the 20% mark'}
-          tone={rate == null ? 'muted' : rate > 0.2 ? 'good' : rate < 0 ? 'critical' : 'warning'}
-        />
-        <View style={{ width: sp.md }} />
-        <Stat
-          label="Runway"
-          value={runway == null ? '—' : runway.toFixed(1) + ' mo'}
-          hint="Liquid balance at your median monthly spend"
-          tone="muted"
-        />
-      </View>
+      {/*
+        The period governs every figure below it, so it comes first.
 
-      <View style={{ marginBottom: sp.lg }}>
+        It used to sit between the savings-rate tiles and the net-worth card,
+        which meant the first two numbers on the screen belonged to a period the
+        reader had not been shown yet.
+      */}
+      <View style={{ marginTop: sp.md, marginBottom: sp.md }}>
         <PeriodBar range={range} onChange={setRange} today={asOf} />
       </View>
 
-      <SectionHeader title="Net worth" />
+      {/*
+        Where it goes: the ring and its reading, side by side.
+
+        A donut answers "how is the whole thing divided", which is the question
+        someone has about a month of spending — and putting the total in the
+        hole means the parts and the whole arrive in one movement. The legend
+        goes beside it rather than under it: below, the two compete for the same
+        glance and the card is twice as tall for no extra information.
+      */}
       <Card>
-        <AmountText
-          value={worth.net}
-          size="display"
-          animate
-          color={worth.net.minor < 0 ? c.critical : c.textPrimary}
-        />
-        <View style={{ flexDirection: 'row', marginTop: sp.md }}>
-          <View style={{ flex: 1 }}>
-            <Text style={[t.micro, { color: c.textMuted }]}>ASSETS</Text>
-            {/* Not unconditionally green: an overdrawn wallet makes assets
-                negative, and "-₦9,774" in the healthy colour reads as a bug. */}
-            <AmountText
-              value={worth.assets}
-              size="body"
-              color={worth.assets.minor < 0 ? c.critical : c.good}
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <Ring
+            size={150}
+            slices={ringSlices}
+            centerLabel="Spent"
+            centerValue={formatMoney(comparison.current, { compactDecimals: true })}
+            centerCaption={live ? 'so far' : range.label}
+            emptyLabel="Nothing spent in this period"
+          />
+          <View style={{ flex: 1, marginLeft: sp.lg }}>
+            <RingLegend
+              slices={ringSlices.map((slice, i) => ({
+                ...slice,
+                label: categoryRows[i]?.categoryName ?? 'Other',
+              }))}
+              total={ringTotal}
+              format={(value) =>
+                formatMoney(money(value, settings.display_currency ?? 'NGN'), {
+                  compactDecimals: true,
+                })
+              }
             />
           </View>
-          <View style={{ flex: 1 }}>
-            <Text style={[t.micro, { color: c.textMuted }]}>LIABILITIES</Text>
-            <AmountText value={worth.liabilities} size="body" color={c.textSecondary} />
-          </View>
+        </View>
+
+        {/* The bars stay, under the ring, because a share and a rank are
+            different readings and only the bars are tappable through to the
+            transactions behind them. */}
+        <View style={{ marginTop: sp.md }}>
+          <CategoryBreakdown
+            rows={categoryRows}
+            grid
+            onSelect={(_, row) => openCategory(row, range)}
+          />
         </View>
       </Card>
 
+      {/*
+        Three figures across where there were two big ones and a hero card.
+
+        Savings rate and runway were 128pt tall tinted panels with an oversized
+        glyph each, and net worth was a full-width hero below them — three
+        screens of scrolling for three numbers. None of them is the headline;
+        the ring above is. They read fine at a third of the width.
+      */}
+      <View style={{ marginTop: sp.lg }}>
+        <StatRow>
+          <StatTile
+            index={0}
+            label="Net worth"
+            value={formatMoney(worth.net, { compactDecimals: true })}
+            caption={`Owed ${formatMoney(worth.liabilities, { compactDecimals: true })}`}
+            tone={worth.net.minor < 0 ? 'pink' : 'teal'}
+          />
+          <StatTile
+            index={1}
+            label="Savings rate"
+            value={rate == null ? '—' : `${Math.round(rate * 100)}%`}
+            caption={
+              rate == null ? 'No income yet' : rate > 0.2 ? 'Above 20%' : 'Below 20%'
+            }
+            tone={rate == null ? undefined : rate > 0.2 ? 'green' : rate < 0 ? 'pink' : 'amber'}
+          />
+          <StatTile
+            index={2}
+            label="Runway"
+            value={runway == null ? '—' : `${runway.toFixed(1)}mo`}
+            caption="At median spend"
+          />
+        </StatRow>
+      </View>
+
       <SectionHeader title="Compared with" />
-      <View style={{ flexDirection: 'row', marginBottom: sp.md }}>
-        <ModeChip label="Last month" active={mode === 'month'} onPress={() => setMode('month')} />
-        <View style={{ width: sp.sm }} />
-        <ModeChip label="Last year" active={mode === 'year'} onPress={() => setMode('year')} />
-        <View style={{ width: sp.sm }} />
-        <ModeChip label="Custom" active={mode === 'custom'} onPress={() => setMode('custom')} />
+
+      {/* Three chips that were really one choice, as a track. */}
+      <View style={{ marginBottom: sp.md }}>
+        <SegmentedControl<CompareMode>
+          value={mode}
+          onChange={setMode}
+          options={[
+            { value: 'month', label: 'Last month' },
+            { value: 'year', label: 'Last year' },
+            { value: 'custom', label: 'Custom' },
+          ]}
+        />
       </View>
 
       {mode === 'custom' ? (
         <Card style={{ marginBottom: sp.md }}>
           <Text style={[t.micro, { color: c.textMuted }]}>COMPARE AGAINST</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: sp.sm }}>
-            <DateField value={customFrom} onChange={setCustomFrom} placeholder="From (2026-06-01)" />
+            <View style={{ flex: 1 }}>
+              <DateField value={customFrom} onChange={setCustomFrom} placeholder="From" maxToday />
+            </View>
             <Text style={[t.body, { color: c.textMuted, marginHorizontal: sp.sm }]}>→</Text>
-            <DateField value={customTo} onChange={setCustomTo} placeholder="To (2026-06-30)" />
+            <View style={{ flex: 1 }}>
+              <DateField value={customTo} onChange={setCustomTo} placeholder="To" maxToday />
+            </View>
           </View>
           {custom ? null : (
             <Text style={[t.micro, { color: c.textMuted, marginTop: sp.sm }]}>
-              Enter both dates as YYYY-MM-DD. Showing last month until then.
+              Pick both dates. Showing last month until then.
             </Text>
           )}
         </Card>
       ) : null}
 
       <Card>
-        <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' }}>
+        <View
+          style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' }}
+        >
           <View>
             <Text style={[t.micro, { color: c.textMuted }]}>
               {live ? 'SO FAR THIS MONTH' : range.label.toUpperCase()}
@@ -289,21 +377,17 @@ export default function InsightsScreen() {
             <AmountText value={comparison.current} size="title" />
           </View>
           <View style={{ alignItems: 'flex-end' }}>
-            <Text style={[t.micro, { color: c.textMuted }]}>
-              {(mode === 'custom' && custom
-                ? `${custom.start} → ${custom.end}`
-                : mode === 'year'
-                  ? sameMonthLastYear(range).label
-                  : previousMonth(range).label
-              ).toUpperCase()}
-            </Text>
+            <Text style={[t.micro, { color: c.textMuted }]}>{baselineLabel.toUpperCase()}</Text>
             <AmountText value={comparison.previous} size="body" color={c.textSecondary} />
           </View>
         </View>
 
         {comparison.change != null ? (
           <Text
-            style={[t.caption, { marginTop: sp.md, color: comparison.change > 0.1 ? c.warning : c.good }]}
+            style={[
+              t.caption,
+              { marginTop: sp.md, color: comparison.change > 0.1 ? c.warning : c.good },
+            ]}
           >
             {comparison.change > 0 ? 'Up' : 'Down'}{' '}
             {Math.abs(Math.round(comparison.change * 100))}%
@@ -316,110 +400,127 @@ export default function InsightsScreen() {
           </Text>
         )}
 
-        {/* What actually moved. A category that fell is as interesting as one
-            that rose, so they are ranked by size of change, not by spend. */}
-        {comparison.categories.slice(0, 4).map((d) => (
+        {/*
+          What actually moved, two across.
+
+          A category that fell is as interesting as one that rose, so they are
+          ranked by size of change rather than by spend. Four of them stacked
+          was four more full-width rows on a screen that already had too many;
+          in pairs they occupy two lines and read as a set of movements rather
+          than a continuation of the list above.
+        */}
+        {comparison.categories.length > 0 ? (
           <View
-            key={d.categoryId}
             style={{
               flexDirection: 'row',
-              alignItems: 'center',
+              flexWrap: 'wrap',
               marginTop: sp.md,
+              marginHorizontal: -sp.sm / 2,
               paddingTop: sp.md,
               borderTopWidth: StyleSheet.hairlineWidth,
               borderTopColor: c.border,
             }}
           >
+            {comparison.categories.slice(0, 4).map((d) => (
+              <View
+                key={d.categoryId}
+                style={{ width: '50%', paddingHorizontal: sp.sm / 2, paddingBottom: sp.sm }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <View
+                    style={{
+                      width: 26,
+                      height: 26,
+                      borderRadius: 13,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: d.color + '22',
+                      marginRight: sp.sm,
+                    }}
+                  >
+                    <Text style={{ fontSize: 12 }}>{d.icon}</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[t.micro, { color: c.textSecondary }]} numberOfLines={1}>
+                      {d.categoryName}
+                    </Text>
+                    <Text
+                      style={[
+                        t.caption,
+                        {
+                          color: d.deltaMinor > 0 ? c.warning : c.good,
+                          fontVariant: ['tabular-nums'],
+                        },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {d.deltaMinor > 0 ? '+' : '−'}
+                      {formatMoney(
+                        money(Math.abs(d.deltaMinor), settings.display_currency ?? 'NGN'),
+                        { compactDecimals: true }
+                      )}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            ))}
+          </View>
+        ) : null}
+      </Card>
+
+      {/* Merchants as a podium, not a table. The top three are the answer to
+          "where does it actually go", and a ranked row of cards says that
+          faster than five identical lines with numbers on the right. */}
+      <ScrollRow title="Top merchants" gutter={sp.lg}>
+        {merchants.map((m, i) => {
+          const tones = ['violet', 'pink', 'amber', 'blue', 'teal', 'green'] as const;
+          const tone = c.tile[tones[i % tones.length]];
+          return (
             <View
+              key={m.merchant}
               style={{
-                width: 28,
-                height: 28,
-                borderRadius: 14,
-                alignItems: 'center',
-                justifyContent: 'center',
-                backgroundColor: d.color + '22',
-                marginRight: sp.md,
+                width: 156,
+                borderRadius: 16,
+                backgroundColor: tone.bg,
+                borderWidth: StyleSheet.hairlineWidth,
+                borderColor: tone.border,
+                padding: sp.md,
               }}
             >
-              <Text style={{ fontSize: 13 }}>{d.icon}</Text>
-            </View>
-            <Text style={[t.body, { color: c.textPrimary, flex: 1 }]} numberOfLines={1}>
-              {d.categoryName}
-            </Text>
-            <Text
-              style={[
-                t.caption,
-                { color: d.deltaMinor > 0 ? c.warning : c.good },
-              ]}
-            >
-              {d.deltaMinor > 0 ? '+' : '−'}
-              {formatMoney(money(Math.abs(d.deltaMinor), settings.display_currency ?? 'NGN'), {
-                compactDecimals: true,
-              })}
-            </Text>
-          </View>
-        ))}
-      </Card>
+              <View
+                style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: 14,
+                  backgroundColor: tone.tag,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Text style={[t.micro, { color: '#ffffff' }]}>{i + 1}</Text>
+              </View>
 
-      <SectionHeader title="Where it goes" />
-      <Card>
-        <CategoryBreakdown
-          rows={categoryRows}
-          onSelect={(_, row) => openCategory(row, range)}
-        />
-      </Card>
-
-      <SectionHeader title="Top merchants" />
-      <Card padded={false}>
-        {merchants.map((m, i) => (
-          <View
-            key={m.merchant}
-            style={{
-              flexDirection: 'row',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              paddingHorizontal: sp.lg,
-              paddingVertical: sp.md,
-              borderBottomWidth: i === merchants.length - 1 ? 0 : 0.5,
-              borderBottomColor: c.border,
-            }}
-          >
-            <View style={{ flex: 1 }}>
-              <Text style={[t.body, { color: c.textPrimary }]} numberOfLines={1}>
+              <Text
+                style={[t.bodyStrong, { color: c.textPrimary, marginTop: sp.sm }]}
+                numberOfLines={2}
+              >
                 {m.merchant}
               </Text>
+              <AmountText value={m.total} size="body" color={tone.fg} />
               <Text style={[t.micro, { color: c.textMuted, marginTop: 2 }]}>
                 {m.count} visit{m.count === 1 ? '' : 's'} ·{' '}
-                {formatMoney({ minor: Math.round(m.total.minor / m.count), currency: m.total.currency }, { compactDecimals: true })} average
+                {formatMoney(
+                  { minor: Math.round(m.total.minor / m.count), currency: m.total.currency },
+                  { compactDecimals: true }
+                )}{' '}
+                avg
               </Text>
             </View>
-            <AmountText value={m.total} size="body" />
-          </View>
-        ))}
-      </Card>
-    </ScrollView>
-  );
-}
+          );
+        })}
+      </ScrollRow>
 
-function Stat({
-  label,
-  value,
-  hint,
-  tone,
-}: {
-  label: string;
-  value: string;
-  hint: string;
-  tone: 'good' | 'warning' | 'critical' | 'muted';
-}) {
-  const { c, type: t, space: sp } = useTheme();
-  const color = { good: c.good, warning: c.warning, critical: c.critical, muted: c.textPrimary }[tone];
-  return (
-    <Card style={{ flex: 1 }}>
-      <Text style={[t.micro, { color: c.textMuted }]}>{label.toUpperCase()}</Text>
-      <Text style={[t.display, { color, marginTop: sp.xs }]}>{value}</Text>
-      <Text style={[t.micro, { color: c.textMuted, marginTop: sp.xs }]}>{hint}</Text>
-    </Card>
+    </ScrollView>
   );
 }
 

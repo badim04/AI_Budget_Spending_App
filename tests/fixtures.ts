@@ -18,29 +18,42 @@
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
-const DOWNLOADS = 'C:/Users/user/Downloads';
+/**
+ * Every place the statements have actually lived.
+ *
+ * They started in Downloads, moved into a WhatsApp folder there, and then into
+ * the repo alongside the design references. Each move silently switched the
+ * cross-format checks off again, which is the exact failure this file exists to
+ * prevent, so the list is a list rather than a constant.
+ */
+const ROOTS = [
+  'C:/Users/user/Downloads',
+  join(__dirname, '..'),
+];
 
-/** Search Downloads and one level of its subfolders. */
+/** Search each root and one level of its subfolders. */
 function findByName(filename: string): string | null {
-  const direct = join(DOWNLOADS, filename);
-  if (existsSync(direct)) return direct;
+  for (const root of ROOTS) {
+    const direct = join(root, filename);
+    if (existsSync(direct)) return direct;
 
-  let entries: string[];
-  try {
-    entries = readdirSync(DOWNLOADS);
-  } catch {
-    return null;
-  }
-
-  for (const entry of entries) {
-    const folder = join(DOWNLOADS, entry);
+    let entries: string[];
     try {
-      if (!statSync(folder).isDirectory()) continue;
+      entries = readdirSync(root);
     } catch {
       continue;
     }
-    const candidate = join(folder, filename);
-    if (existsSync(candidate)) return candidate;
+
+    for (const entry of entries) {
+      const folder = join(root, entry);
+      try {
+        if (!statSync(folder).isDirectory()) continue;
+      } catch {
+        continue;
+      }
+      const candidate = join(folder, filename);
+      if (existsSync(candidate)) return candidate;
+    }
   }
 
   return null;
@@ -61,6 +74,6 @@ export function describeMissingFixtures(): string {
     'Real statement fixtures not found. The cross-format checks did NOT run.',
     `  looked for: ${PDF_NAME}`,
     `              ${XLSX_NAME}`,
-    `  under:      ${DOWNLOADS} and its immediate subfolders`,
+    `  under:      ${ROOTS.join(' and ')} (and their immediate subfolders)`,
   ].join('\n');
 }

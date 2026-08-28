@@ -3,7 +3,9 @@ import { ScrollView, View, Text, Pressable, TextInput, StyleSheet } from 'react-
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../src/theme/ThemeProvider';
-import { AmountText, BudgetBar, Button, Card, Pill, SectionHeader } from '../../src/components/ui/Primitives';
+import { Spot } from '../../src/components/art/Spot';
+import { AmountText, BudgetBar, Button, Card, SectionHeader } from '../../src/components/ui/Primitives';
+import { StatRow, StatTile } from '../../src/components/ui/Tiles';
 import { budgetStateColor, tabularNumbers } from '../../src/theme/tokens';
 import {
   allBudgetStatuses,
@@ -75,6 +77,24 @@ export default function BudgetsScreen() {
   );
   const currency = settings.display_currency ?? 'NGN';
 
+  /**
+   * The envelopes, totalled once.
+   *
+   * `effectiveAllocated` rather than `allocated`, so a carried-over surplus is
+   * counted the same way the individual tiles count it — two figures for the
+   * same thing that disagree is the failure this app has already been bitten by
+   * on the dashboard.
+   */
+  const totals = useMemo(() => {
+    let allocatedMinor = 0;
+    let spentMinor = 0;
+    for (const s of statuses) {
+      allocatedMinor += s.effectiveAllocated.minor;
+      spentMinor += s.spent.minor;
+    }
+    return { allocatedMinor, spentMinor, remainingMinor: allocatedMinor - spentMinor };
+  }, [statuses]);
+
   async function commitAmount(budgetId: string) {
     const budget = budgets.find((b) => b.id === budgetId);
     if (!budget) return;
@@ -109,11 +129,18 @@ export default function BudgetsScreen() {
 
       {statuses.length === 0 ? (
         <Card style={{ marginTop: sp.xl }}>
-          <Text style={[t.body, { color: c.textPrimary }]}>No budgets yet.</Text>
-          <Text style={[t.caption, { color: c.textMuted, marginTop: sp.xs }]}>
-            Budgets are what turn a list of transactions into a plan. Load the demo data in
-            Settings to see how they work.
-          </Text>
+          <View style={{ alignItems: 'center', paddingVertical: sp.lg }}>
+            <Spot name="target" size={112} tone="violet" />
+            <Text style={[t.heading, { color: c.textPrimary, marginTop: sp.md }]}>
+              No budgets yet
+            </Text>
+            <Text
+              style={[t.caption, { color: c.textMuted, marginTop: sp.xs, textAlign: 'center', maxWidth: 300 }]}
+            >
+              Budgets are what turn a list of transactions into a plan. Load the demo data in
+              Settings to see how they work.
+            </Text>
+          </View>
         </Card>
       ) : null}
 
@@ -175,137 +202,244 @@ export default function BudgetsScreen() {
         </Card>
       ) : null}
 
-      {statuses.length > 0 ? <SectionHeader title="Envelopes" /> : null}
+      {statuses.length > 0 ? (
+        <>
+          {/*
+            The three numbers the whole page is about, before the envelopes.
 
-      {statuses.map((s) => {
-        const exhaustion = projectedExhaustionDate(s);
-        const carried = s.effectiveAllocated.minor - s.allocated.minor;
-        const isEditing = editing === s.budget.id;
-        const unset = s.budget.amountMinor === 0;
-        const suggested = unset ? suggestAllocation(s.budget, ctx) : null;
+            Reading a column of envelopes and adding them up in your head is not
+            a summary. These are the same figures the tiles below carry, totalled
+            once so "how am I doing overall" is answered before any individual
+            envelope has to be opened.
+          */}
+          <View style={{ marginTop: sp.lg }}>
+            <StatRow>
+              <StatTile
+                index={0}
+                label="Allocated"
+                value={formatMoney(
+                  { minor: totals.allocatedMinor, currency: displayCurrency },
+                  { compactDecimals: true }
+                )}
+                caption={`${statuses.length} envelope${statuses.length === 1 ? '' : 's'}`}
+              />
+              <StatTile
+                index={1}
+                label="Spent"
+                value={formatMoney(
+                  { minor: totals.spentMinor, currency: displayCurrency },
+                  { compactDecimals: true }
+                )}
+                caption={
+                  totals.allocatedMinor > 0
+                    ? `${Math.round((totals.spentMinor / totals.allocatedMinor) * 100)}% used`
+                    : 'Nothing set yet'
+                }
+              />
+              <StatTile
+                index={2}
+                label="Left"
+                value={formatMoney(
+                  { minor: totals.remainingMinor, currency: displayCurrency },
+                  { compactDecimals: true }
+                )}
+                tone={totals.remainingMinor < 0 ? 'pink' : 'green'}
+                caption={totals.remainingMinor < 0 ? 'Over budget' : 'Still available'}
+              />
+            </StatRow>
+          </View>
 
-        return (
-          <Card key={s.budget.id} style={{ marginTop: sp.lg }}>
-            <View style={styles.spread}>
-              <Text style={[t.heading, { color: c.textPrimary }]}>{s.budget.name}</Text>
-              {unset ? (
-                <Pill label="Not set" tone="neutral" />
-              ) : (
-                <Pill
-                  label={STATE_LABEL[s.state] ?? s.state}
-                  tone={s.state === 'over' ? 'critical' : s.state === 'warning' ? 'warning' : 'good'}
-                  icon={s.state === 'over' ? '!' : s.state === 'warning' ? '~' : '✓'}
-                />
-              )}
-            </View>
+          <SectionHeader title="Envelopes" />
 
-            <View style={[styles.spread, { marginTop: sp.md, alignItems: 'flex-end' }]}>
-              <AmountText value={s.spent} size="title" />
-              {isEditing ? (
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <Text style={[t.caption, { color: c.textMuted }]}>of </Text>
-                  <TextInput
-                    value={draftAmount}
-                    onChangeText={setDraftAmount}
-                    keyboardType="decimal-pad"
-                    inputMode="decimal"
-                    autoFocus
-                    onBlur={() => commitAmount(s.budget.id)}
-                    onSubmitEditing={() => commitAmount(s.budget.id)}
-                    placeholder={currencyMeta(s.budget.currency).symbol}
-                    placeholderTextColor={c.textMuted}
-                    style={[
-                      t.bodyStrong,
-                      tabularNumbers,
-                      {
-                        color: c.accent,
-                        minWidth: 90,
-                        textAlign: 'right',
-                        borderBottomWidth: 1,
-                        borderBottomColor: c.accent,
-                        paddingVertical: 2,
-                      },
-                    ]}
-                    accessibilityLabel={`${s.budget.name} budget amount`}
-                  />
+          {/*
+            Two across.
+
+            Each envelope used to be a full-width card about 250pt tall, so six
+            of them was a five-screen scroll and no two could ever be compared
+            without remembering the one above. Halved, a pair fits side by side
+            and the whole plan is visible at once — which is the only way a set
+            of budgets reads as a plan rather than as six separate decisions.
+
+            The bar survives the shrink because the pace marker is the point:
+            without it a progress bar says how much is gone, and with it the bar
+            says whether that is too fast. That is the difference between a
+            measurement and advice.
+          */}
+          <View
+            style={{
+              flexDirection: 'row',
+              flexWrap: 'wrap',
+              marginHorizontal: -sp.sm / 2,
+            }}
+          >
+            {statuses.map((s, i) => {
+              const exhaustion = projectedExhaustionDate(s);
+              const carried = s.effectiveAllocated.minor - s.allocated.minor;
+              const isEditing = editing === s.budget.id;
+              const unset = s.budget.amountMinor === 0;
+              const suggested = unset ? suggestAllocation(s.budget, ctx) : null;
+
+              return (
+                <View
+                  key={s.budget.id}
+                  style={{ width: '50%', paddingHorizontal: sp.sm / 2, paddingBottom: sp.sm }}
+                >
+                  <View
+                    style={{
+                      backgroundColor: c.surface,
+                      borderRadius: r.lg,
+                      borderWidth: StyleSheet.hairlineWidth,
+                      borderColor: s.state === 'over' ? c.critical : c.border,
+                      padding: sp.md,
+                      minHeight: 176,
+                      justifyContent: 'space-between',
+                    }}
+                  >
+                    <View>
+                      <View style={styles.spread}>
+                        <Text
+                          style={[t.caption, { color: c.textPrimary, flex: 1, marginRight: 4 }]}
+                          numberOfLines={1}
+                        >
+                          {s.budget.name}
+                        </Text>
+                        <View
+                          style={{
+                            width: 8,
+                            height: 8,
+                            borderRadius: 4,
+                            backgroundColor: unset ? c.border : budgetStateColor(c, s.state),
+                          }}
+                        />
+                      </View>
+
+                      {/* What is left, not what is spent: "left" is the number
+                          that changes a decision. */}
+                      <Text style={[t.micro, { color: c.textMuted, marginTop: sp.sm }]}>
+                        {unset ? 'NOT SET' : s.remaining.minor < 0 ? 'OVER BY' : 'LEFT'}
+                      </Text>
+                      <AmountText
+                        value={
+                          unset
+                            ? { minor: 0, currency: s.budget.currency }
+                            : {
+                                minor: Math.abs(s.remaining.minor),
+                                currency: s.remaining.currency,
+                              }
+                        }
+                        size="body"
+                        color={
+                          unset
+                            ? c.textMuted
+                            : s.remaining.minor < 0
+                              ? c.critical
+                              : c.textPrimary
+                        }
+                      />
+
+                      {isEditing ? (
+                        <TextInput
+                          value={draftAmount}
+                          onChangeText={setDraftAmount}
+                          keyboardType="decimal-pad"
+                          inputMode="decimal"
+                          autoFocus
+                          onBlur={() => commitAmount(s.budget.id)}
+                          onSubmitEditing={() => commitAmount(s.budget.id)}
+                          placeholder={currencyMeta(s.budget.currency).symbol}
+                          placeholderTextColor={c.textMuted}
+                          style={[
+                            t.caption,
+                            tabularNumbers,
+                            {
+                              color: c.accent,
+                              marginTop: 4,
+                              borderBottomWidth: 1,
+                              borderBottomColor: c.accent,
+                              paddingVertical: 2,
+                            },
+                          ]}
+                          accessibilityLabel={`${s.budget.name} budget amount`}
+                        />
+                      ) : (
+                        <Pressable
+                          onPress={() => {
+                            setEditing(s.budget.id);
+                            setDraftAmount(
+                              s.budget.amountMinor
+                                ? String(
+                                    s.budget.amountMinor /
+                                      10 ** currencyMeta(s.budget.currency).decimals
+                                  )
+                                : ''
+                            );
+                          }}
+                          hitSlop={8}
+                          accessibilityLabel={`Edit ${s.budget.name} budget`}
+                        >
+                          <Text style={[t.micro, { color: c.accent, marginTop: 2 }]}>
+                            {formatMoney(s.spent, { compactDecimals: true })} of{' '}
+                            {formatMoney(s.effectiveAllocated, { compactDecimals: true })}{' '}
+                            <Ionicons name="pencil" size={9} color={c.accent} />
+                          </Text>
+                        </Pressable>
+                      )}
+                    </View>
+
+                    <View style={{ marginTop: sp.sm }}>
+                      {!unset ? (
+                        <BudgetBar
+                          utilisation={s.utilisation}
+                          pace={s.periodProgress}
+                          color={budgetStateColor(c, s.state)}
+                        />
+                      ) : null}
+
+                      {unset && suggested && suggested.minor > 0 ? (
+                        <Pressable
+                          onPress={() =>
+                            saveBudget({
+                              ...s.budget,
+                              amountMinor: suggested.minor,
+                              updatedAt: nowISO(),
+                            })
+                          }
+                        >
+                          <Text style={[t.micro, { color: c.accent }]} numberOfLines={2}>
+                            Use {formatMoney(suggested, { compactDecimals: true })} — your recent
+                            median
+                          </Text>
+                        </Pressable>
+                      ) : unset ? (
+                        <Text style={[t.micro, { color: c.textMuted }]} numberOfLines={2}>
+                          Tap the amount to set this envelope.
+                        </Text>
+                      ) : (
+                        <Text
+                          style={[t.micro, { color: c.textMuted, marginTop: 6 }]}
+                          numberOfLines={2}
+                        >
+                          {s.remaining.minor < 0
+                            ? STATE_LABEL[s.state]
+                            : exhaustion
+                              ? `Runs out ~${formatDate(exhaustion, 'short')}`
+                              : `${formatMoney(s.safeToSpendPerDay, { compactDecimals: true })} a day`}
+                          {carried !== 0
+                            ? ` · ${formatMoney(
+                                { minor: carried, currency: s.allocated.currency },
+                                { signed: true, compactDecimals: true }
+                              )} carried`
+                            : ''}
+                        </Text>
+                      )}
+                    </View>
+                  </View>
                 </View>
-              ) : (
-                <Pressable
-                  onPress={() => {
-                    setEditing(s.budget.id);
-                    setDraftAmount(
-                      s.budget.amountMinor
-                        ? String(
-                            s.budget.amountMinor / 10 ** currencyMeta(s.budget.currency).decimals
-                          )
-                        : ''
-                    );
-                  }}
-                  hitSlop={8}
-                  accessibilityLabel={`Edit ${s.budget.name} budget`}
-                >
-                  <Text style={[t.caption, { color: c.accent }]}>
-                    of {formatMoney(s.effectiveAllocated, { compactDecimals: true })}{' '}
-                    <Ionicons name="pencil" size={11} color={c.accent} />
-                  </Text>
-                </Pressable>
-              )}
-            </View>
-
-            {!unset ? (
-              <View style={{ marginTop: sp.md }}>
-                <BudgetBar
-                  utilisation={s.utilisation}
-                  pace={s.periodProgress}
-                  color={budgetStateColor(c, s.state)}
-                />
-              </View>
-            ) : null}
-
-            <View style={{ marginTop: sp.md }}>
-              {unset && suggested && suggested.minor > 0 ? (
-                <Pressable
-                  onPress={() =>
-                    saveBudget({ ...s.budget, amountMinor: suggested.minor, updatedAt: nowISO() })
-                  }
-                >
-                  <Text style={[t.caption, { color: c.accent }]}>
-                    Suggest {formatMoney(suggested, { compactDecimals: true })} — the median of your
-                    recent months. Tap to use it.
-                  </Text>
-                </Pressable>
-              ) : unset ? (
-                <Text style={[t.caption, { color: c.textMuted }]}>
-                  Tap the amount to set this envelope.
-                </Text>
-              ) : (
-                <>
-                  <Text style={[t.caption, { color: c.textSecondary }]}>
-                    {s.remaining.minor < 0
-                      ? `${formatMoney(s.remaining, { compactDecimals: true })} over`
-                      : `${formatMoney(s.safeToSpendPerDay, { compactDecimals: true })} a day keeps you inside it`}
-                  </Text>
-                  {exhaustion ? (
-                    <Text style={[t.micro, { color: c.warning, marginTop: 4 }]}>
-                      At this rate it runs out around {formatDate(exhaustion, 'short')}
-                    </Text>
-                  ) : null}
-                  {carried !== 0 ? (
-                    <Text style={[t.micro, { color: c.textMuted, marginTop: 4 }]}>
-                      Includes{' '}
-                      {formatMoney(
-                        { minor: carried, currency: s.allocated.currency },
-                        { signed: true, compactDecimals: true }
-                      )}{' '}
-                      carried over
-                    </Text>
-                  ) : null}
-                </>
-              )}
-            </View>
-          </Card>
-        );
-      })}
+              );
+            })}
+          </View>
+        </>
+      ) : null}
     </ScrollView>
   );
 }

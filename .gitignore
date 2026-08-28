@@ -51,3 +51,12 @@ __pycache__/
 
 # device crash logs
 crash.txt
+
+# Real bank statements, kept on disk as test fixtures and never committed.
+# They carry a real name, address and account number, and this repo is headed
+# for GitHub. tests/fixtures.ts finds them wherever they sit and prints a loud
+# warning when they are absent, so a clean clone skips those checks noisily
+# rather than silently.
+*_8102579422_*.pdf
+*_8102579422_*.xlsx
+finlo-*-to-*.xlsx

@@ -29,6 +29,19 @@
  * treating that stray "(₦)" as a column boundary splits the amount column in
  * half.
  *
+ * One statement can hold more than one table. A file covering a wallet and a
+ * savings account prints two, and the second is laid out on its own x positions
+ * — in the file this was built against, the description column moves from 177.9
+ * to 195.4 and the debit column from 303.8 to 259.5. Anchors clustered across
+ * both put every savings row one column to the right of where the header said
+ * it was, the parser found an empty date cell, and all 58 of them were dropped
+ * without a warning or an error. So each section is tabulated with its own
+ * anchors.
+ *
+ * A repeated page header is not a new section. The two are told apart by the
+ * only thing that actually distinguishes them: a page repeat sits on the same
+ * x positions, a new section does not.
+ *
  * Pure functions over extracted items: no React, no I/O, testable in Node.
  */
 
@@ -134,42 +147,38 @@ function toCells(band: Band, anchors: number[], xTolerance: number): string[] {
   return cells;
 }
 
+/** The x positions a band's runs sit on, rounded so a hairline nudge is equal. */
+function xSignature(band: Band): number[] {
+  return band.items.map((i) => i.x);
+}
+
+/** Same columns, so this header is a page repeat rather than a new section. */
+function sameColumns(a: number[], b: number[], xTolerance: number): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((x, i) => Math.abs(x - b[i]) <= xTolerance);
+}
+
 /**
- * Read a statement PDF as a table.
+ * Tabulate one section: its own header, its own anchors, its own rows.
  *
- * `isHeader` decides which band is the header — the caller owns that, because
- * knowing that "Value Date" and "Description" make a statement is the
- * statement parser's business, not the PDF reader's.
- *
- * `startsRow` decides whether a band begins a new record or continues the last
- * one. Continuations merge column-wise, which is what keeps a wrapped
- * description out of the amount columns.
- *
- * Returns null when no header can be found, so the caller can fall back.
+ * Split out of `tabulateSections` so the anchor clustering can never see runs
+ * belonging to a differently-shaped table further down the file.
  */
-export function tabulate(
-  items: TextItem[],
+function tabulateSection(
+  header: Band,
+  body: Band[],
   isHeader: (cells: string[]) => boolean,
   startsRow: (cells: string[]) => boolean,
-  opts: TabulateOptions = {}
+  xTolerance: number,
+  minSupport?: number
 ): PdfTable | null {
-  const yTolerance = opts.yTolerance ?? 2;
-  const xTolerance = opts.xTolerance ?? 3;
-
-  const bands = toBands(items, yTolerance);
-  if (bands.length === 0) return null;
-
-  const headerIndex = bands.findIndex((b) => isHeader(loose(b)));
-  if (headerIndex === -1) return null;
-
-  const body = bands.slice(headerIndex + 1);
   if (body.length === 0) return null;
 
-  const minSupport = opts.minSupport ?? Math.max(3, Math.floor(body.length * 0.02));
-  const anchors = columnAnchors(body, xTolerance, minSupport);
+  const support = minSupport ?? Math.max(3, Math.floor(body.length * 0.02));
+  const anchors = columnAnchors(body, xTolerance, support);
   if (anchors.length < 3) return null;
 
-  const headers = toCells(bands[headerIndex], anchors, xTolerance);
+  const headers = toCells(header, anchors, xTolerance);
 
   interface Record {
     band: Band;
@@ -179,7 +188,7 @@ export function tabulate(
   }
 
   const records: Record[] = [];
-  const loose_: { band: Band; cells: string[] }[] = [];
+  const strays: { band: Band; cells: string[] }[] = [];
 
   for (const band of body) {
     const cells = toCells(band, anchors, xTolerance);
@@ -188,7 +197,7 @@ export function tabulate(
     if (isHeader(loose(band))) continue;
 
     if (startsRow(cells)) records.push({ band, cells, above: [], below: [] });
-    else loose_.push({ band, cells });
+    else strays.push({ band, cells });
   }
 
   if (records.length === 0) return null;
@@ -201,7 +210,7 @@ export function tabulate(
    * *below*. Reading order cannot tell those apart — proximity can. Ties go to
    * the row below, because that is the side the description leans.
    */
-  for (const fragment of loose_) {
+  for (const fragment of strays) {
     let best: Record | null = null;
     let bestDistance = Infinity;
 
@@ -236,4 +245,60 @@ export function tabulate(
   });
 
   return { headers, rows };
+}
+
+/**
+ * Read every table in a statement PDF.
+ *
+ * `isHeader` decides which band is a header — the caller owns that, because
+ * knowing that "Value Date" and "Description" make a statement is the
+ * statement parser's business, not the PDF reader's.
+ *
+ * `startsRow` decides whether a band begins a new record or continues the last
+ * one. Continuations merge column-wise, which is what keeps a wrapped
+ * description out of the amount columns.
+ *
+ * Returns one table per account section, each with its own header row, in the
+ * order they appear. Empty when no header can be found, so the caller can fall
+ * back to reading order.
+ */
+export function tabulateSections(
+  items: TextItem[],
+  isHeader: (cells: string[]) => boolean,
+  startsRow: (cells: string[]) => boolean,
+  opts: TabulateOptions = {}
+): PdfTable[] {
+  const yTolerance = opts.yTolerance ?? 2;
+  const xTolerance = opts.xTolerance ?? 3;
+
+  const bands = toBands(items, yTolerance);
+  if (bands.length === 0) return [];
+
+  const headerIndices: number[] = [];
+  bands.forEach((band, i) => {
+    if (!isHeader(loose(band))) return;
+    const last = headerIndices[headerIndices.length - 1];
+    // A header on the same columns as the section already open is that
+    // section's header printed again at the top of a page.
+    if (last != null && sameColumns(xSignature(bands[last]), xSignature(band), xTolerance)) return;
+    headerIndices.push(i);
+  });
+
+  if (headerIndices.length === 0) return [];
+
+  const tables: PdfTable[] = [];
+  headerIndices.forEach((start, n) => {
+    const end = headerIndices[n + 1] ?? bands.length;
+    const table = tabulateSection(
+      bands[start],
+      bands.slice(start + 1, end),
+      isHeader,
+      startsRow,
+      xTolerance,
+      opts.minSupport
+    );
+    if (table) tables.push(table);
+  });
+
+  return tables;
 }

@@ -15,7 +15,7 @@ codebase. Expo SDK 52 + React Native 0.76 + TypeScript, expo-router.
 - **Expo:** owner `badim04s-team`, slug `budgetspenderappfinlo`,
   projectId `240fc2a2-71ba-4e64-b2b8-29efd995522d`
 - **Git:** local only, branch `master`. **No GitHub remote yet.**
-- **465 tests pass** (13 skip without the sample statements in Downloads), `tsc --noEmit -p tsconfig.json` is clean,
+- **512 tests pass, none skipped**, `tsc --noEmit -p tsconfig.json` is clean,
   `npx expo-doctor` passes.
 
 Owner is in Nigeria; default currency NGN. Testers are real people getting an
@@ -149,7 +149,7 @@ Google *restricted scope*; going public needs a CASA security assessment
 ## Commands
 
 ```bash
-npm test                     # 347 tests
+npm test                     # 512 tests
 npx tsc --noEmit -p tsconfig.json
 npm run web                  # localhost:8081
 npm start                    # Expo Go via QR
@@ -212,3 +212,83 @@ Verify before claiming something works — "it compiles" is not "it runs".
 Short answers when he says "quick one". He is testing on a real Android device
 over a slow connection, so a wasted 15-minute build is expensive: prefer getting
 a log over guessing.
+
+---
+
+## Design system (added 2026-08-28)
+
+The app is being taken from "accounting dashboard" to "consumer finance app".
+The rule, which holds without being asked: **no screen ships as a single
+column of identical rectangles.** Two or three across, or a sideways row.
+
+Pieces to build with — do not invent new ones without checking these first:
+
+| Component | For |
+|---|---|
+| `ui/Tiles` → `Tile`, `TileGrid` | 2-col coloured tiles, tag + faded glyph |
+| `ui/Tiles` → `ScrollRow`, `MiniCard` | sideways rows that bleed off-screen |
+| `ui/Tiles` → `Banner` | full-width, one message |
+| `ui/Tiles` → `HeroCarousel` | swipeable headline, with dots |
+| `ui/Tiles` → `StatRow`, `StatTile` | 2–3 figures across, each with its movement |
+| `ui/Tiles` → `SegmentedControl` | one choice from two or three, as a track |
+| `charts/Ring`, `RingLegend` | donut with the total in the hole, key beside it |
+| `ui/FeatureCard` | one saturated fill behind a headline figure |
+| `ui/SettingsList` | grouped rows with state on the right |
+| `ui/DateField` | calendar picker — never a typed date |
+| `ui/Primitives` → `Button`, `FabButton` | pill, press-scale, `tone`/`size`/`loading` |
+| `art/Mascot` (Fin, 5 poses), `art/Spot` (8 scenes) | SVG, theme-coloured |
+| `core/voice` | every sentence about a change in spending |
+
+**Three palettes that must not be confused.** `series` encodes a category and
+can never be picked for looks. `feature` is a saturated fill behind a headline.
+`tile` is six quiet tinted panels identifying a destination. Only `series`
+carries data.
+
+### Done 2026-08-28
+
+- **Activity** opens on money-out/money-in side by side, a segmented track
+  instead of stacked chip rows, search behind a toggle, and a **two-column**
+  review queue. Day headings carry the day's net, so scrolling finds the
+  expensive days instead of just moving through rows.
+- **Settings** is groups of hairline-separated `SettingsRow`s read down the
+  right-hand edge — the shape `ui/SettingsList` was built for and which most of
+  the page was bypassing with `divided={false} padded` blocks. A three-across
+  status strip answers "is this set up?" before the page moves, and the two
+  irreversible actions are last, apart, behind a red border.
+- **Insights** leads with a **ring** and its legend side by side; net worth,
+  savings rate and runway are three across where two tinted panels and a
+  full-width hero used to be; the category movers are a 2-col grid.
+- **Budgets** envelopes are **two across** under an allocated/spent/left strip.
+  The pace marker survives the shrink, because without it a bar says how much is
+  gone and with it the bar says whether that is too fast.
+
+### Still to do
+
+- No illustrations on Goals or Budgets list items yet.
+- Goals and Capture have not had the same pass.
+
+### Numbers: what is proven and what is not
+
+Proven, and tested against ground truth: the same OPay account exported as PDF
+and as XLSX produces identical transactions **to the kobo** — 229 rows, both
+sections — and both match the totals the bank printed inside the file
+(₦695,309.46 out / ₦688,525.77 in, 128 debits and 101 credits across Wallet and
+Savings). Every import is now checked against those figures and refuses on a
+mismatch.
+Money is integer minor units end to end; dates are `YYYY-MM-DD` parsed as UTC.
+
+Residual risk, in order:
+
+1. **A bank whose PDF layout differs from OPay's.** The reader recovers columns
+   from x-coordinates and is exact on the one bank tested. Another layout could
+   mis-assign a column, and a wrong amount looks plausible.
+   *Now guarded:* `src/ingest/statement/reconcile.ts` reads the totals the bank
+   prints in its own preamble and refuses an import that disagrees with them.
+   Building it found a live bug — the PDF was silently dropping the whole
+   Savings section, 58 transactions, because that table sits on different x
+   positions. See ARCHITECTURE › "A statement can change shape half way down".
+2. **Categorisation is a guess until confirmed.** Amounts are right; "spent on
+   food" is only as good as the filing.
+3. **FX**, if more than one currency is ever used. Stale rates are excluded and
+   flagged rather than guessed.
+4. Internal-transfer exclusion changes totals **by design** (Settings toggle).

@@ -11,7 +11,18 @@
 
 import React, { useMemo, useState } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
-import Svg, { Circle, Defs, G, Line, LinearGradient, Path, Rect, Stop, Text as SvgText } from 'react-native-svg';
+import Svg, {
+  Circle,
+  ClipPath,
+  Defs,
+  G,
+  Line,
+  LinearGradient,
+  Path,
+  Rect,
+  Stop,
+  Text as SvgText,
+} from 'react-native-svg';
 import { useTheme } from '../../theme/ThemeProvider';
 import { formatMoney, type Money } from '../../core/money';
 import { formatDate } from '../../core/dates';
@@ -57,7 +68,29 @@ export function SpendTrendChart({
       ...(target ? [target.minor] : []),
       0, // always anchor the axis at zero — a truncated money axis exaggerates change
     ];
-    const maxV = Math.max(...all);
+    /**
+     * The forecast's upper bound is not allowed to set the scale.
+     *
+     * A wide prediction interval — which is what an eight-month history with
+     * two real months produces — reached ₦1.5M while actual spend was ₦270K.
+     * Scaled to that, every real column collapsed to a few pixels along the
+     * axis and the chart showed a big empty box with two lozenges in it. The
+     * history is the subject; the forecast is context, and context that
+     * squashes the subject is drawn wrong.
+     *
+     * So the axis is set by what actually happened (plus the budget line), and
+     * the band is allowed to run past the top and be clipped.
+     */
+    const grounded = [
+      ...actual.map((p) => p.value.minor),
+      ...(target ? [target.minor] : []),
+      0,
+    ];
+    const actualMax = Math.max(...grounded);
+    const forecastMax = Math.max(...forecastPoints.map((p) => p.upper.minor), 0);
+
+    // Give the forecast room to be visible, but never more than half again.
+    const maxV = Math.max(actualMax, Math.min(forecastMax, actualMax * 1.5)) || 1;
     const minV = Math.min(...all, 0);
     const span = maxV - minV || 1;
     const total = actual.length + forecastPoints.length;
@@ -129,9 +162,35 @@ export function SpendTrendChart({
 
       <Svg width={width} height={height}>
         <Defs>
+          {/* A two-hue wash rather than one colour fading out. The line is
+              the data; the fill is what makes the chart look like part of the
+              app instead of a plot pasted into it. */}
           <LinearGradient id="fill" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0" stopColor={c.series[0]} stopOpacity="0.22" />
-            <Stop offset="1" stopColor={c.series[0]} stopOpacity="0" />
+            <Stop offset="0" stopColor={c.accent} stopOpacity="0.38" />
+            <Stop offset="0.55" stopColor={c.tile.pink.tag} stopOpacity="0.14" />
+            <Stop offset="1" stopColor={c.tile.pink.tag} stopOpacity="0" />
+          </LinearGradient>
+
+          {/* The line itself runs violet into pink along its length. */}
+          <LinearGradient id="stroke" x1="0" y1="0" x2="1" y2="0">
+            <Stop offset="0" stopColor={c.accent} />
+            <Stop offset="1" stopColor={c.tile.pink.tag} />
+          </LinearGradient>
+
+          {/* Columns run violet at the top into pink at the foot, so a tall
+              bar is visibly a different thing from a short one. */}
+          <ClipPath id="plot">
+            <Rect x={PAD.left} y={PAD.top} width={plotW} height={plotH} />
+          </ClipPath>
+
+          <LinearGradient id="bar" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor={c.accent} />
+            <Stop offset="1" stopColor={c.tile.pink.tag} stopOpacity={0.65} />
+          </LinearGradient>
+
+          <LinearGradient id="band" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor={c.tile.teal.tag} stopOpacity="0.26" />
+            <Stop offset="1" stopColor={c.tile.teal.tag} stopOpacity="0.04" />
           </LinearGradient>
         </Defs>
 
@@ -175,15 +234,54 @@ export function SpendTrendChart({
           </G>
         ) : null}
 
-        {/* Prediction interval, drawn before the lines so it reads as ground. */}
-        {bandPath ? <Path d={bandPath} fill={c.series[0]} fillOpacity={0.12} /> : null}
+        {/* Prediction interval, drawn before the columns so it reads as
+            ground. Clipped, because the band may now run past the top. */}
+        {bandPath ? (
+          <G clipPath="url(#plot)">
+            <Path d={bandPath} fill="url(#band)" />
+          </G>
+        ) : null}
 
-        <Path d={`${actualPath} L${x(actual.length - 1)},${y(model.minV)} L${x(0)},${y(model.minV)} Z`} fill="url(#fill)" />
-        <Path d={actualPath} stroke={c.series[0]} strokeWidth={ch.lineWidth} fill="none" strokeLinejoin="round" strokeLinecap="round" />
+        {/* History as rounded columns rather than a line.
+            A line says "a continuous quantity that was measured at moments".
+            Monthly spend is not that: it is a set of finished, separate
+            totals, and a column each is both the truer shape and the one that
+            can be compared by eye without following a stroke. The forecast
+            stays a line, which keeps the visual break between what happened
+            and what is guessed — that break is load-bearing. */}
+        {actual.map((point, i) => {
+          const top = y(point.value.minor);
+          const base = y(model.minV);
+          const barW = Math.max(
+            6,
+            Math.min(26, (width - PAD.left - PAD.right) / Math.max(actual.length, 1) - 10)
+          );
+          const h = base - top;
+          const last = i === actual.length - 1;
+
+          // A month with no spending gets nothing. Drawing a 2px stub for it
+          // produced a row of little dots along the axis that read as data.
+          if (h < 1) return null;
+
+          return (
+            <Rect
+              key={point.date}
+              x={x(i) - barW / 2}
+              y={top}
+              width={barW}
+              height={h}
+              // Clamped by height too: a short bar with an 8px radius is a
+              // lozenge, not a column.
+              rx={Math.min(barW / 2, h / 2, 8)}
+              fill="url(#bar)"
+              opacity={last ? 1 : 0.75}
+            />
+          );
+        })}
         {forecastPath ? (
           <Path
             d={forecastPath}
-            stroke={c.series[0]}
+            stroke={c.tile.teal.tag}
             strokeWidth={ch.lineWidth}
             fill="none"
             strokeDasharray="5 4"
@@ -196,9 +294,9 @@ export function SpendTrendChart({
           cx={x(actual.length - 1)}
           cy={y(actual[actual.length - 1].value.minor)}
           r={4.5}
-          fill={c.series[0]}
+          fill={c.accent}
           stroke={c.surface}
-          strokeWidth={2}
+          strokeWidth={3}
         />
 
         {activePoint ? (
@@ -215,9 +313,9 @@ export function SpendTrendChart({
               cx={x(active!)}
               cy={y(activePoint.value.minor)}
               r={5}
-              fill={c.series[0]}
+              fill={c.accent}
               stroke={c.surface}
-              strokeWidth={2}
+              strokeWidth={3}
             />
           </G>
         ) : null}
