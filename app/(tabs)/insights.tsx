@@ -16,6 +16,7 @@ import {
   type AnalyticsContext,
 } from '../../src/core/analytics';
 import { describeHealth, financialHealth } from '../../src/core/health';
+import { challenges, describeChallenges } from '../../src/core/challenges';
 import { allBudgetStatuses } from '../../src/core/budget';
 import { today } from '../../src/core/dates';
 import { monthOf } from '../../src/core/periods';
@@ -97,6 +98,17 @@ export default function InsightsScreen() {
     () => generateInsights(ctx, budgetStatuses),
     [ctx, budgetStatuses]
   );
+
+  /**
+   * Challenges are scored off the ledger, never off a stored streak.
+   *
+   * A stored streak survives a deleted transaction and starts lying; see
+   * `core/challenges` for the bigger trap — an unimported day must never count
+   * as a no-spend day, or the app rewards people for not using it.
+   */
+  const challengeList = useMemo(() => challenges(transactions, asOf), [transactions, asOf]);
+  const challengeLine = describeChallenges(challengeList);
+  const liveChallenges = challengeList.filter((x) => x.state !== 'unmeasurable');
 
   return (
     <Screen>
@@ -249,6 +261,82 @@ export default function InsightsScreen() {
           <Grid ideal={3} phoneMin={1}>
             {insights.slice(0, 6).map((insight) => (
               <InsightCard key={insight.id} insight={insight} />
+            ))}
+          </Grid>
+        </>
+      ) : null}
+
+      {/*
+        Challenges: the one part of this screen you can act on today.
+
+        Deliberately after the score and the sentences, because a challenge is
+        a suggestion and the two above it are facts — and a screen that opens on
+        gamification before it has told you anything true is a screen people
+        stop believing.
+      */}
+      {liveChallenges.length > 0 ? (
+        <>
+          <SectionHeader title="Challenges" />
+          {challengeLine ? (
+            <Text style={[t.caption, { color: c.textSecondary, marginBottom: sp.sm }]}>
+              {challengeLine}
+            </Text>
+          ) : null}
+          <Grid ideal={4}>
+            {liveChallenges.map((challenge) => (
+              <View
+                key={challenge.id}
+                style={{
+                  backgroundColor: c.surface,
+                  borderRadius: 16,
+                  borderWidth: StyleSheet.hairlineWidth,
+                  borderColor: challenge.state === 'complete' ? c.good : c.border,
+                  padding: sp.lg,
+                  minHeight: 148,
+                  justifyContent: 'space-between',
+                }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Text style={[t.caption, { color: c.textPrimary, flex: 1 }]} numberOfLines={1}>
+                    {challenge.title}
+                  </Text>
+                  {challenge.state === 'complete' ? (
+                    <Text style={[t.micro, { color: c.good }]}>DONE</Text>
+                  ) : null}
+                </View>
+
+                <View style={{ marginTop: sp.sm }}>
+                  <Text style={[t.display, { color: c.textPrimary }]}>
+                    {challenge.streak}
+                  </Text>
+                  <Text style={[t.micro, { color: c.textMuted }]}>
+                    in a row{challenge.best > challenge.streak ? ` · best ${challenge.best}` : ''}
+                  </Text>
+                </View>
+
+                <View
+                  style={{
+                    height: 6,
+                    borderRadius: 3,
+                    backgroundColor: c.surfaceSunken,
+                    marginTop: sp.sm,
+                    overflow: 'hidden',
+                  }}
+                >
+                  <View
+                    style={{
+                      width: `${Math.round((challenge.progress ?? 0) * 100)}%`,
+                      height: '100%',
+                      borderRadius: 3,
+                      backgroundColor: challenge.state === 'complete' ? c.good : c.accent,
+                    }}
+                  />
+                </View>
+
+                <Text style={[t.micro, { color: c.textMuted, marginTop: 6 }]} numberOfLines={2}>
+                  {challenge.detail}
+                </Text>
+              </View>
             ))}
           </Grid>
         </>

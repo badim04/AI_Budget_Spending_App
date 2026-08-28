@@ -19,7 +19,7 @@ codebase. Expo SDK 52 + React Native 0.76 + TypeScript, expo-router.
   - work in progress is on branch **`v1.2`**
   - real bank statements are gitignored — they carry a real name, address and
     account number, and `tests/fixtures.ts` says so loudly when they are absent
-- **527 tests pass, none skipped**, `tsc --noEmit -p tsconfig.json` is clean,
+- **554 tests pass, none skipped**, `tsc --noEmit -p tsconfig.json` is clean,
   `npx expo-doctor` passes.
 
 Owner is in Nigeria; default currency NGN. Testers are real people getting an
@@ -153,7 +153,7 @@ Google *restricted scope*; going public needs a CASA security assessment
 ## Commands
 
 ```bash
-npm test                     # 512 tests
+npm test                     # 554 tests
 npx tsc --noEmit -p tsconfig.json
 npm run web                  # localhost:8081
 npm start                    # Expo Go via QR
@@ -283,17 +283,40 @@ carries data.
 - **`core/health.ts`** — a financial health score that refuses to score what it
   cannot see. Read its header before changing it; the rules there are the
   difference between a useful number and a made-up one.
+- **`core/challenges.ts`** — streaks that cannot be gamed by not using the app.
+  A day is only scored when the ledger was demonstrably live around it. Read
+  the header before touching the coverage rule.
+- **`core/notifications.ts`** — a dated log, deliberately a different register
+  from Insights. Everything is derived and dated by a real event; only read
+  markers persist.
+- **New routes:** `/notifications`, `/help`, `/premium`. Premium shows plans and
+  does **not** sell — there is no billing, no entitlement check and nothing
+  behind the paywall, and the page says so at the top.
+
+### Verify with a bundle, not just a typecheck
+
+`npx tsc --noEmit` is necessary and not sufficient. Metro and Babel fail on
+things tsc will pass, and a mid-edit hot reload once put a duplicate-import
+compile error on screen while the typecheck was green. Before claiming a screen
+works:
+
+```bash
+npx expo export --platform web --output-dir /tmp/webcheck
+```
 
 ### Still to do
 
 - No illustrations on Goals or Budgets list items yet.
 - Goals and Capture have not had the responsive/design pass.
-- **v1.2 features not yet built**, all from the reference designs: a
-  notifications centre, smart challenges/goals-with-streaks, a security section
-  in Settings (PIN + biometric — still blocked on the device-lock vs accounts
-  decision), and a help centre. None are started.
-- The desktop layout puts content in a wide column but no screen yet uses a
-  genuine dashboard grid — Home in particular could carry three columns.
+- **Accounts and sync — chosen 2026-08-28, not started.** The owner picked real
+  accounts (email codes + sync) over a local device lock. This is not a
+  screen-sized job: it needs a server, session and token handling, email
+  delivery, and it makes the project a controller of other people's financial
+  data, which brings a privacy policy and NDPR/GDPR obligations. Half-built auth
+  is worse than none. Settings now states the position honestly in the meantime.
+  `server/llm-proxy/` is the obvious place to grow the backend from.
+- **Billing**, if Premium is ever to be more than a plan page.
+- Reports and Review have not had the responsive/design pass.
 
 ### Numbers: what is proven and what is not
 

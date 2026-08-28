@@ -671,6 +671,36 @@ export default function SettingsScreen() {
         />
       </SettingsGroup>
 
+      {/* ---------------------------------------------------------- account */}
+      <SettingsGroup title="Account">
+        {/*
+          Said plainly rather than hidden.
+
+          There is no auth in this app: no sign-in, no lock, no sync. A Security
+          row that opened a page of switches which did nothing would be worse
+          than no row, so this one states the position and links to the plan.
+        */}
+        <SettingsRow
+          icon="🔓"
+          label="Sign-in and app lock"
+          value="Not set up"
+          tone="warning"
+          hint="Finlo has no accounts yet, so there is nothing to sign in to and no lock on the app. Anyone who can open your phone can open Finlo."
+        />
+        <SettingsRow
+          icon="⭐"
+          label="Finlo Premium"
+          value="Not on sale"
+          onPress={() => router.push('/premium')}
+        />
+        <SettingsRow icon="❓" label="Help" onPress={() => router.push('/help')} />
+        <SettingsRow
+          icon="🔔"
+          label="Notifications"
+          onPress={() => router.push('/notifications')}
+        />
+      </SettingsGroup>
+
       {/* ------------------------------------------------------------ about */}
       <SettingsGroup title="About">
         <SettingsRow icon="🏷️" label="Version" value={ota.appVersion} />
