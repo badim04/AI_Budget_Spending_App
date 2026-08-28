@@ -14,7 +14,7 @@ codebase. Expo SDK 52 + React Native 0.76 + TypeScript, expo-router.
 - **Package:** `com.badim04.finlo` · **version** 0.1.1 · **versionCode** 2
 - **Expo:** owner `badim04s-team`, slug `budgetspenderappfinlo`,
   projectId `240fc2a2-71ba-4e64-b2b8-29efd995522d`
-- **Git:** local only. **No GitHub remote yet.**
+- **Git:** remote is `github.com/badim04/AI_Budget_Spending_App`. **Nothing is pushed yet** — every commit below is local.
   - `v1.1.0` is a tag and `master` points at it: `git checkout v1.1.0`
   - work in progress is on branch **`v1.2`**
   - real bank statements are gitignored — they carry a real name, address and
@@ -31,6 +31,7 @@ APK link, including strangers.
 
 | File | Why |
 |---|---|
+| `docs/BACKLOG.md` | **Everything not built**, each item startable cold |
 | `docs/ARCHITECTURE.md` | Why the code is shaped this way, and the traps already hit |
 | `docs/SHIPPING.md` | Build, OTA update, and every key/credential step |
 | `docs/SETUP.md` | Running it, Expo Go, troubleshooting |
@@ -306,17 +307,9 @@ npx expo export --platform web --output-dir /tmp/webcheck
 
 ### Still to do
 
-- No illustrations on Goals or Budgets list items yet.
-- Goals and Capture have not had the responsive/design pass.
-- **Accounts and sync — chosen 2026-08-28, not started.** The owner picked real
-  accounts (email codes + sync) over a local device lock. This is not a
-  screen-sized job: it needs a server, session and token handling, email
-  delivery, and it makes the project a controller of other people's financial
-  data, which brings a privacy policy and NDPR/GDPR obligations. Half-built auth
-  is worse than none. Settings now states the position honestly in the meantime.
-  `server/llm-proxy/` is the obvious place to grow the backend from.
-- **Billing**, if Premium is ever to be more than a plan page.
-- Reports and Review have not had the responsive/design pass.
+Moved to **`docs/BACKLOG.md`** — one list, not two. It carries accounts/sync
+(chosen, not started), billing, the screens still needing the responsive pass,
+recurring detection, bank feeds, and the Gemini-key debt that has a deadline.
 
 ### Numbers: what is proven and what is not
 
