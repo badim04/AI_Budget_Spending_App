@@ -14,8 +14,12 @@ codebase. Expo SDK 52 + React Native 0.76 + TypeScript, expo-router.
 - **Package:** `com.badim04.finlo` · **version** 0.1.1 · **versionCode** 2
 - **Expo:** owner `badim04s-team`, slug `budgetspenderappfinlo`,
   projectId `240fc2a2-71ba-4e64-b2b8-29efd995522d`
-- **Git:** local only, branch `master`. **No GitHub remote yet.**
-- **512 tests pass, none skipped**, `tsc --noEmit -p tsconfig.json` is clean,
+- **Git:** local only. **No GitHub remote yet.**
+  - `v1.1.0` is a tag and `master` points at it: `git checkout v1.1.0`
+  - work in progress is on branch **`v1.2`**
+  - real bank statements are gitignored — they carry a real name, address and
+    account number, and `tests/fixtures.ts` says so loudly when they are absent
+- **527 tests pass, none skipped**, `tsc --noEmit -p tsconfig.json` is clean,
   `npx expo-doctor` passes.
 
 Owner is in Nigeria; default currency NGN. Testers are real people getting an
@@ -232,6 +236,8 @@ Pieces to build with — do not invent new ones without checking these first:
 | `ui/Tiles` → `StatRow`, `StatTile` | 2–3 figures across, each with its movement |
 | `ui/Tiles` → `SegmentedControl` | one choice from two or three, as a track |
 | `charts/Ring`, `RingLegend` | donut with the total in the hole, key beside it |
+| `ui/Screen` → `Screen`, `Grid`, `Split` | the page shell, the reflowing grid, two panels side by side |
+| `theme/layout` → `useLayout`, `columnsFor` | phone / tablet / desktop, and how many fit across |
 | `ui/FeatureCard` | one saturated fill behind a headline figure |
 | `ui/SettingsList` | grouped rows with state on the right |
 | `ui/DateField` | calendar picker — never a typed date |
@@ -262,10 +268,32 @@ carries data.
   The pace marker survives the shrink, because without it a bar says how much is
   gone and with it the bar says whether that is too fast.
 
+### v1.2, in progress (branch `v1.2`)
+
+- **Dark mode is navy** (`#080d1c` canvas), light mode is a cool near-white.
+  The reference designs in `UIUX Designs/` are the source; the brand purple
+  stays as the accent.
+- **The web build is a web build.** Every screen took its width from a literal
+  `maxWidth: 560–640`, so a 1440pt display showed a phone-shaped strip.
+  `theme/layout.ts` + `ui/Screen.tsx` own it now, and grids go 2 / 3 / 4 across
+  as the window grows — the extra width becomes more columns, never wider rows.
+- **Analysis and Insights are separate pages.** Analysis has the charts and a
+  monthly/quarterly/yearly grain toggle; Insights has the health score and the
+  sentences. Each has a track at the top to reach the other.
+- **`core/health.ts`** — a financial health score that refuses to score what it
+  cannot see. Read its header before changing it; the rules there are the
+  difference between a useful number and a made-up one.
+
 ### Still to do
 
 - No illustrations on Goals or Budgets list items yet.
-- Goals and Capture have not had the same pass.
+- Goals and Capture have not had the responsive/design pass.
+- **v1.2 features not yet built**, all from the reference designs: a
+  notifications centre, smart challenges/goals-with-streaks, a security section
+  in Settings (PIN + biometric — still blocked on the device-lock vs accounts
+  decision), and a help centre. None are started.
+- The desktop layout puts content in a wide column but no screen yet uses a
+  genuine dashboard grid — Home in particular could carry three columns.
 
 ### Numbers: what is proven and what is not
 
