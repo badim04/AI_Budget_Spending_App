@@ -517,7 +517,14 @@ export function generateInsights(
         severity: 'neutral',
         title: `Unusual ${ctx.categories.find((c) => c.id === t.categoryId)?.name ?? ''} charge`,
         body: `${t.merchant} is well outside what this category normally looks like.`,
-        action: { route: '/transaction/[id]', params: { id: t.id } },
+        /*
+          The edit screen is `/transaction/new` with an `id` param, not a
+          dynamic `[id]` segment. Writing the route as `/transaction/[id]` sent
+          the app to `finlo:///transaction/tx_mtdl6qki_vfbya9` and an Unmatched
+          Route page. `tests/routes.test.ts` now checks every declared action
+          against the files in `app/`.
+        */
+        action: { route: '/transaction/new', params: { id: t.id } },
         weight: 45,
       });
       break; // one anomaly callout at a time — a wall of them is just noise

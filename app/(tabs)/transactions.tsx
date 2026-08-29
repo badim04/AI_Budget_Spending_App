@@ -722,7 +722,12 @@ export default function TransactionsScreen() {
                     {item.merchant}
                   </Text>
                   <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
-                    <Text style={[t.micro, { color: c.textMuted, marginRight: 6 }]}>
+                    {/* shrink + truncate: a long category name must give way to
+                        the pill beside it rather than pushing it off the row. */}
+                    <Text
+                      style={[t.micro, { color: c.textMuted, marginRight: 6, flexShrink: 1 }]}
+                      numberOfLines={1}
+                    >
                       {category?.name ?? 'Uncategorised'}
                     </Text>
                     {filed ? (

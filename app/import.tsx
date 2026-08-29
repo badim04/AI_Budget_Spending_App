@@ -123,6 +123,19 @@ export default function ImportScreen() {
   const [busy, setBusy] = useState(false);
   const [saving, setSaving] = useState(false);
   const [usedLlm, setUsedLlm] = useState(0);
+  /**
+   * What the model filed, by descriptor.
+   *
+   * This was a `useRef`, and that was the whole reason Gemini looked like it
+   * did nothing. The model's answers landed in the ref and the preview picked
+   * them up, but every count on the summary card was derived from
+   * `s.categoryId` — the offline guess — so "113 to review" stayed at 113 and
+   * the button still offered to ask about rows it had already answered. The
+   * work was happening and none of it was visible. State, so the counts move.
+   */
+  const [llmApplied, setLlmApplied] = useState<
+    Map<string, { categoryId: string | null; confidence: number }>
+  >(new Map());
   const [llmProgress, setLlmProgress] = useState('');
   const [sourceFormat, setSourceFormat] = useState<StatementFormat | null>(null);
   const [sourceSections, setSourceSections] = useState<string[]>([]);
@@ -281,9 +294,20 @@ export default function ImportScreen() {
     });
   }, [parsed, from, to, accountId, categoriseDeps, existingCounts, ignoreInternal, categories]);
 
+  const resolveCategory = (s: Staged): string | undefined =>
+    s.categoryId ?? llmApplied.get(s.row.description.toLowerCase())?.categoryId ?? undefined;
+
   const fresh = staged.filter((s) => !s.duplicate);
   const duplicates = staged.length - fresh.length;
-  const uncategorised = fresh.filter((s) => !s.categoryId).length;
+  /**
+   * Counted after the model, not before it.
+   *
+   * These read `resolveCategory` rather than `s.categoryId` so a row Gemini
+   * filed stops being counted as unknown. Otherwise the pills and the button
+   * describe the state before the thing the user just pressed.
+   */
+  const uncategorised = fresh.filter((s) => !resolveCategory(s)).length;
+  const aiFiled = fresh.filter((s) => !s.categoryId && resolveCategory(s)).length;
   const settled = fresh.filter((s) => s.settled).length;
   const internalCount = fresh.filter((s) => s.internal).length;
   const totals = summarise(fresh.map((s) => s.row));
@@ -322,10 +346,8 @@ export default function ImportScreen() {
         return;
       }
 
-      const byDescriptor = new Map(run.suggestions.map((a) => [a.descriptor.toLowerCase(), a]));
       // Applied to the staged view only; nothing is written until confirm.
-      setParsed((prev) => (prev ? { ...prev } : prev));
-      llmApplied.current = byDescriptor;
+      setLlmApplied(new Map(run.suggestions.map((a) => [a.descriptor.toLowerCase(), a])));
       setUsedLlm(filed.length);
 
       if (run.error) notify(`${filed.length} categorised`, run.error);
@@ -335,12 +357,6 @@ export default function ImportScreen() {
     }
   }, [fresh, categories]);
 
-  const llmApplied = React.useRef<Map<string, { categoryId: string | null; confidence: number }>>(
-    new Map()
-  );
-
-  const resolveCategory = (s: Staged): string | undefined =>
-    s.categoryId ?? llmApplied.current.get(s.row.description.toLowerCase())?.categoryId ?? undefined;
 
   const doImport = useCallback(async () => {
     if (!parsed || !account) return;
@@ -512,24 +528,36 @@ export default function ImportScreen() {
 
           {/* 4. summary */}
           <Card style={{ marginTop: sp.lg }}>
-            <View style={styles.spread}>
-              <Text style={[t.heading, { color: c.textPrimary }]}>
-                {fresh.length} to import
-              </Text>
-              <View style={{ flexDirection: 'row' }}>
-                {duplicates > 0 ? <Pill label={`${duplicates} duplicate`} tone="neutral" /> : null}
-                {settled > 0 ? <Pill label={`${settled} auto-filed`} tone="good" /> : null}
-                {internalCount > 0 ? (
-                  <View style={{ marginLeft: sp.sm }}>
-                    <Pill label={`${internalCount} internal`} tone="neutral" />
-                  </View>
-                ) : null}
-                {uncategorised > 0 ? (
-                  <View style={{ marginLeft: sp.sm }}>
-                    <Pill label={`${uncategorised} to review`} tone="warning" />
-                  </View>
-                ) : null}
-              </View>
+            {/*
+              The heading and the pills are stacked, not squeezed onto one line.
+
+              A `space-between` row with four pills on the right had no
+              `flexWrap` and no way to shrink, so on a 360pt phone the last one
+              ("113 to review" — the most important of the four) ran off the
+              edge of the card. Chips are variable-width by nature: how many
+              there are and how long each one is both depend on the file, so any
+              layout that assumes they fit is one import away from being wrong.
+            */}
+            <Text style={[t.heading, { color: c.textPrimary }]}>
+              {fresh.length} to import
+            </Text>
+            <View
+              style={{
+                flexDirection: 'row',
+                flexWrap: 'wrap',
+                gap: sp.sm,
+                marginTop: sp.sm,
+              }}
+            >
+              {duplicates > 0 ? <Pill label={`${duplicates} duplicate`} tone="neutral" /> : null}
+              {settled > 0 ? <Pill label={`${settled} auto-filed`} tone="good" /> : null}
+              {aiFiled > 0 ? <Pill label={`${aiFiled} by ${llm.name}`} tone="accent" /> : null}
+              {internalCount > 0 ? (
+                <Pill label={`${internalCount} internal`} tone="neutral" />
+              ) : null}
+              {uncategorised > 0 ? (
+                <Pill label={`${uncategorised} to review`} tone="warning" />
+              ) : null}
             </View>
 
             <View style={{ flexDirection: 'row', marginTop: sp.lg }}>
