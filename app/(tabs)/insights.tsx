@@ -369,12 +369,21 @@ export default function InsightsScreen() {
       </StatRow>
 
       <Banner
+        tone="violet"
+        glyph="✨"
+        title="Ask about your money"
+        body="A question in plain words, answered from your own figures."
+        onPress={() => router.push('/ask')}
+        style={{ marginTop: sp.xl }}
+      />
+
+      <Banner
         tone="blue"
         glyph="📊"
         title="See the numbers behind this"
         body="Charts, category breakdown and month-on-month comparison."
         onPress={() => router.replace('/analysis')}
-        style={{ marginTop: sp.xl }}
+        style={{ marginTop: sp.md }}
       />
     </Screen>
   );

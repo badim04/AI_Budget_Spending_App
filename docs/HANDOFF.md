@@ -19,7 +19,7 @@ codebase. Expo SDK 52 + React Native 0.76 + TypeScript, expo-router.
   - work in progress is on branch **`v1.2`**
   - real bank statements are gitignored — they carry a real name, address and
     account number, and `tests/fixtures.ts` says so loudly when they are absent
-- **554 tests pass, none skipped**, `tsc --noEmit -p tsconfig.json` is clean,
+- **574 tests pass, none skipped**, `tsc --noEmit -p tsconfig.json` is clean,
   `npx expo-doctor` passes.
 
 Owner is in Nigeria; default currency NGN. Testers are real people getting an
@@ -44,7 +44,15 @@ APK link, including strangers.
 1. **Metro caches aggressively.** When behaviour does not match the code,
    restart with `npm start -- --clear` *before* debugging. This sent a whole
    session chasing a bug that was already fixed.
-2. **Never `npm install <expo-pkg>`** — always `npx expo install`. And removing
+2. **A new native module means a new APK, and `--clear` first.**
+   `expo-linear-gradient` was added in v1.2. Installing it left Metro's dev
+   cache stale, and every route 500'd with
+   `Cannot read properties of undefined (reading 'get')` — a bundler error that
+   looks nothing like "you added a native module". `npx expo start --clear`
+   fixed it in one go. On device, a native dependency cannot ship over the air:
+   that release needs `npm run apk`, and OTA works again from the next one.
+
+   **Never `npm install <expo-pkg>`** — always `npx expo install`. And removing
    packages prunes transitive deps: that silently deleted `expo-web-browser`
    (needed by expo-auth-session) and crashed Settings and Add on device while
    web, the bundler and every test stayed green. `tests/dependencies.test.ts`
@@ -154,7 +162,7 @@ Google *restricted scope*; going public needs a CASA security assessment
 ## Commands
 
 ```bash
-npm test                     # 554 tests
+npm test                     # 574 tests
 npx tsc --noEmit -p tsconfig.json
 npm run web                  # localhost:8081
 npm start                    # Expo Go via QR
@@ -293,6 +301,24 @@ carries data.
 - **New routes:** `/notifications`, `/help`, `/premium`. Premium shows plans and
   does **not** sell — there is no billing, no entitlement check and nothing
   behind the paywall, and the page says so at the top.
+
+### Ask Finlo, and the one AI call that sends your figures
+
+`app/ask.tsx` answers questions about the user's own money. Two rules make it
+safe to have at all, both enforced in `core/factSheet.ts`:
+
+- **The model never calculates.** It is handed figures already computed by the
+  tested core and told, in the prompt, that every number it gives must appear in
+  that brief verbatim. A model asked to total a column returns something that
+  looks exactly like a total.
+- **Other people's names never leave the phone.** A peer-transfer descriptor
+  carries a third party's full name and account number. `redact` strips digits
+  and refs, and `readCounterparty` decides who is a person — structurally, from
+  the `Transfer to NAME | BANK | ACCOUNT` shape, not by guessing from spelling.
+  Individuals are aggregated as "transfers to individuals (names withheld)".
+
+It is the only feature that sends financial data anywhere, so it asks once, in
+plain words, and lets you read the exact brief before agreeing.
 
 ### Verify with a bundle, not just a typecheck
 

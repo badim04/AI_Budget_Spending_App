@@ -693,6 +693,13 @@ export default function SettingsScreen() {
           value="Not on sale"
           onPress={() => router.push('/premium')}
         />
+        <SettingsRow
+          icon="✨"
+          label="Ask Finlo"
+          value={settings.ai_ask_consent === 'true' ? 'Allowed' : 'Not allowed'}
+          hint="Answers questions about your money by sending a summary of your totals to Gemini. Names and account numbers are stripped first."
+          onPress={() => router.push('/ask')}
+        />
         <SettingsRow icon="❓" label="Help" onPress={() => router.push('/help')} />
         <SettingsRow
           icon="🔔"

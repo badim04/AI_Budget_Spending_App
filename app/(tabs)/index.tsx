@@ -364,6 +364,14 @@ export default function DashboardScreen() {
           index={4}
           onPress={() => router.push('/reports')}
         />
+        <MiniCard
+          tone="violet"
+          glyph="✨"
+          title="Ask"
+          subtitle="about your money"
+          index={5}
+          onPress={() => router.push('/ask')}
+        />
       </ScrollRow>
 
       {/* One thing worth knowing, in the app's own voice. Absent when there is

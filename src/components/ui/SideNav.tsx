@@ -36,6 +36,7 @@ const ITEMS: NavItem[] = [
   { href: '/goals', label: 'Goals', icon: 'flag-outline', iconActive: 'flag' },
   { href: '/insights', label: 'Insights', icon: 'trending-up-outline', iconActive: 'trending-up' },
   { href: '/analysis', label: 'Analysis', icon: 'bar-chart-outline', iconActive: 'bar-chart' },
+  { href: '/ask', label: 'Ask Finlo', icon: 'sparkles-outline', iconActive: 'sparkles' },
   { href: '/settings', label: 'Settings', icon: 'settings-outline', iconActive: 'settings' },
 ];
 

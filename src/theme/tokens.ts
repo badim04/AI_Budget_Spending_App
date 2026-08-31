@@ -138,16 +138,30 @@ const dark = {
    * which is the trick every consumer finance app in this market uses and the
    * reason their dashboards feel navigable at a glance.
    *
-   * `sheen` is a translucent white laid over the fill to fake the depth a
-   * gradient would give. A real gradient needs `expo-linear-gradient`, which is
-   * a native dependency, and this app ships JavaScript-only updates to builds
-   * that may be older than the change.
+   * `sheen` is a translucent white wash. It used to fake the depth a gradient
+   * would give; now that `expo-linear-gradient` is installed the cards carry a
+   * real one, and `sheen` is kept for the pills that sit *on* those cards,
+   * where a wash of the card's own light is exactly right.
    */
   feature: {
-    primary: { bg: '#7c4dff', fg: '#ffffff', muted: 'rgba(255,255,255,0.74)' },
-    savings: { bg: '#4d3bd6', fg: '#ffffff', muted: 'rgba(255,255,255,0.74)' },
-    spend: { bg: '#ff5a5f', fg: '#ffffff', muted: 'rgba(255,255,255,0.78)' },
-    calm: { bg: '#12b981', fg: '#04291d', muted: 'rgba(4,41,29,0.68)' },
+    /**
+     * `bg` -> `bgEnd` is a real two-stop gradient (v1.2).
+     *
+     * These were flat fills with a translucent white circle floated over the
+     * top-right corner, standing in for the gradient every app in the reference
+     * set uses. That stand-in existed because a gradient needs
+     * `expo-linear-gradient` — a native module, and adding one means the next
+     * update has to be a full build rather than an over-the-air push.
+     *
+     * The second stop is the same hue darkened and pushed slightly toward
+     * violet, never a different hue: a two-hue gradient reads as a brand
+     * flourish and starts competing with the figure printed on top of it, which
+     * is the one thing this card exists to make prominent.
+     */
+    primary: { bg: '#8a5cff', bgEnd: '#5b2fe0', fg: '#ffffff', muted: 'rgba(255,255,255,0.74)' },
+    savings: { bg: '#5d4ae8', bgEnd: '#33249e', fg: '#ffffff', muted: 'rgba(255,255,255,0.74)' },
+    spend: { bg: '#ff6b70', bgEnd: '#d93a56', fg: '#ffffff', muted: 'rgba(255,255,255,0.78)' },
+    calm: { bg: '#16c98c', bgEnd: '#0a8f68', fg: '#04291d', muted: 'rgba(4,41,29,0.68)' },
   },
   sheen: 'rgba(255,255,255,0.10)',
 
@@ -243,10 +257,11 @@ const light: typeof dark = {
 
   /** See the dark palette: chrome, not data encoding. */
   feature: {
-    primary: { bg: '#6c4dff', fg: '#ffffff', muted: 'rgba(255,255,255,0.80)' },
-    savings: { bg: '#4d3bd6', fg: '#ffffff', muted: 'rgba(255,255,255,0.80)' },
-    spend: { bg: '#ff5a5f', fg: '#ffffff', muted: 'rgba(255,255,255,0.84)' },
-    calm: { bg: '#0fa873', fg: '#04291d', muted: 'rgba(4,41,29,0.72)' },
+    /** See the dark palette: same hue, darkened, never a second hue. */
+    primary: { bg: '#7d5cff', bgEnd: '#5330d8', fg: '#ffffff', muted: 'rgba(255,255,255,0.80)' },
+    savings: { bg: '#5b48e0', bgEnd: '#3826b0', fg: '#ffffff', muted: 'rgba(255,255,255,0.80)' },
+    spend: { bg: '#ff6a6f', bgEnd: '#e0424f', fg: '#ffffff', muted: 'rgba(255,255,255,0.84)' },
+    calm: { bg: '#14b881', bgEnd: '#0a8a60', fg: '#04291d', muted: 'rgba(4,41,29,0.72)' },
   },
   sheen: 'rgba(255,255,255,0.16)',
 

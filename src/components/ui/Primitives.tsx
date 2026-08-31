@@ -17,6 +17,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { useTheme } from '../../theme/ThemeProvider';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useCountUp, usePressScale } from '../../theme/motion';
 import { formatMoney, type Money } from '../../core/money';
 import { tabularNumbers } from '../../theme/tokens';
@@ -321,19 +322,27 @@ export function Button({
           ...(variant === 'primary' ? elevation.card : null),
         }}
       >
-        {/* The surface highlight: brighter across the top third of the fill. */}
+        {/*
+          The surface light, as a real gradient rather than a hard-edged block.
+
+          This was a solid translucent rectangle over the top half, which at the
+          pill's radius left a visible horizontal seam across the middle of
+          every primary button. A gradient fading to nothing has no seam to see,
+          and it is the same light the FeatureCard now carries — one idea, not
+          two approximations of it.
+        */}
         {variant !== 'ghost' ? (
-          <View
-            pointerEvents="none"
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              right: 0,
-              height: height / 2,
-              backgroundColor:
-                variant === 'primary' ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.06)',
-            }}
+          <LinearGradient
+            colors={
+              variant === 'primary'
+                ? ['rgba(255,255,255,0.22)', 'rgba(255,255,255,0)']
+                : ['rgba(255,255,255,0.10)', 'rgba(255,255,255,0)']
+            }
+            start={{ x: 0, y: 0 }}
+            end={{ x: 0, y: 1 }}
+            // pointerEvents in the style, not as a prop: react-native-web
+            // deprecated the prop form and warns on every render otherwise.
+            style={{ position: 'absolute', top: 0, left: 0, right: 0, height, pointerEvents: 'none' }}
           />
         ) : null}
 

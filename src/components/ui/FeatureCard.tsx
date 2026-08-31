@@ -10,13 +10,21 @@
  * a chart series colour *does* encode something and can never be chosen for
  * looks. See the `feature` note in `theme/tokens.ts`.
  *
- * `sheen` is a translucent white ellipse-ish overlay standing in for a
- * gradient, which would need a native dependency this app cannot add without a
- * rebuild.
+ * The fill is a real two-stop gradient as of v1.2. It used to be a flat colour
+ * with a translucent white circle floated over the corner, standing in for one,
+ * because `expo-linear-gradient` is a native module and adding it meant the
+ * next update had to be a full build rather than an over-the-air push. That
+ * cost was paid once, deliberately.
+ *
+ * The gradient runs top-left to bottom-right and both stops are the same hue —
+ * see `theme/tokens.ts`. A two-hue gradient reads as a brand flourish and
+ * starts competing with the figure printed on it, which is the one thing this
+ * card exists to make prominent.
  */
 
 import React from 'react';
 import { View, Text, Pressable, Animated, StyleSheet, type ViewStyle } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../../theme/ThemeProvider';
 import { useEnter, usePressScale } from '../../theme/motion';
 
@@ -49,10 +57,14 @@ export function FeatureCard({
   const palette = c.feature[tone];
 
   const body = (
-    <View
+    <LinearGradient
+      colors={[palette.bg, palette.bgEnd]}
+      // Top-left to bottom-right. A vertical gradient reads as a fade and a
+      // horizontal one as a banner; the diagonal is what looks lit.
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
       style={[
         {
-          backgroundColor: palette.bg,
           borderRadius: r.xl,
           padding: sp.lg,
           overflow: 'hidden',
@@ -61,7 +73,9 @@ export function FeatureCard({
         style,
       ]}
     >
-      {/* Standing in for a gradient: a soft highlight off the top-right. */}
+      {/* A soft highlight off the top-right, on top of the gradient rather than
+          instead of it — the gradient gives depth, this gives the impression of
+          a light source, and the two do different work. */}
       <View
         pointerEvents="none"
         style={{
@@ -84,7 +98,7 @@ export function FeatureCard({
       {children}
 
       {footer ? <View style={{ marginTop: sp.md }}>{footer}</View> : null}
-    </View>
+    </LinearGradient>
   );
 
   if (!onPress) {
