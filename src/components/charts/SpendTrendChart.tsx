@@ -160,6 +160,9 @@ export function SpendTrendChart({
         </View>
       ) : null}
 
+      {/* Relative wrapper so the hit-target overlay shares an origin with the
+          drawing rather than with the card and its header above it. */}
+      <View style={{ width, height }}>
       <Svg width={width} height={height}>
         <Defs>
           {/* A two-hue wash rather than one colour fading out. The line is
@@ -320,20 +323,47 @@ export function SpendTrendChart({
           </G>
         ) : null}
 
-        {/* Invisible hit targets, wider than the marks. */}
+      </Svg>
+
+      {/*
+        The hit targets live outside the SVG, not inside it.
+
+        They were `<Rect onPressIn>` elements, which works on native and does
+        nothing at all on web: react-native-svg does not wire press handlers on
+        web primitives, so it logged "Unknown event handler property onPressOut"
+        and the tooltip simply never appeared in a browser. A chart that
+        responds to touch on a phone and ignores the mouse on a desktop is the
+        kind of divergence that survives a whole release, because whoever built
+        it was testing on one of the two.
+
+        Plain RN Views behave identically on both, so the targets are an
+        absolutely-positioned row on top of the drawing. `hover` is what a mouse
+        does and `pressIn` is what a finger does, and both are wired.
+      */}
+      <View
+        pointerEvents="box-none"
+        style={{ position: 'absolute', left: 0, top: 0, width, height }}
+      >
         {Array.from({ length: model.total }).map((_, i) => (
-          <Rect
+          <Pressable
             key={i}
-            x={x(i) - plotW / model.total / 2}
-            y={PAD.top}
-            width={Math.max(12, plotW / model.total)}
-            height={plotH}
-            fill="transparent"
+            onHoverIn={() => setActive(i)}
+            onHoverOut={() => setActive(null)}
             onPressIn={() => setActive(i)}
             onPressOut={() => setActive(null)}
+            accessibilityRole="button"
+            accessibilityLabel={`Point ${i + 1} of ${model.total}`}
+            style={{
+              position: 'absolute',
+              left: x(i) - plotW / model.total / 2,
+              top: PAD.top,
+              width: Math.max(12, plotW / model.total),
+              height: plotH,
+            }}
           />
         ))}
-      </Svg>
+      </View>
+      </View>
 
       {activePoint ? (
         <View style={[styles.tooltip, { backgroundColor: c.surfaceRaised, borderColor: c.border }]}>

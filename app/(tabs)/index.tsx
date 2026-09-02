@@ -230,14 +230,30 @@ export default function DashboardScreen() {
           you whether the number below is good news, before you have to work
           that out from a chart. */}
       <View style={{ marginBottom: sp.md }}>
-        <Text style={[t.title, { color: c.textPrimary }]}>
-          {greeting(new Date(), {
-            name: settings.user_name,
-            mode: (settings.greeting_language as GreetingMode) ?? 'en',
-            mix: parseMix(settings.greeting_mix),
-            pace: (settings.greeting_mix_pace as MixPace) ?? 'daily',
-          })}
-        </Text>
+        {/*
+          Tap the greeting to change the greeting.
+
+          The most obvious place to change a piece of text is the text itself,
+          and it costs nothing: the row in Profile is still the discoverable
+          route, this is the direct one for anyone who wondered whether it could
+          be changed while looking straight at it.
+        */}
+        <Pressable
+          onPress={() => router.push('/settings')}
+          accessibilityRole="button"
+          accessibilityLabel="Change how Finlo greets you"
+          hitSlop={6}
+          style={{ alignSelf: 'flex-start' }}
+        >
+          <Text style={[t.title, { color: c.textPrimary }]}>
+            {greeting(new Date(), {
+              name: settings.user_name,
+              mode: (settings.greeting_language as GreetingMode) ?? 'en',
+              mix: parseMix(settings.greeting_mix),
+              pace: (settings.greeting_mix_pace as MixPace) ?? 'daily',
+            })}
+          </Text>
+        </Pressable>
         <Text style={[t.body, { color: c.textSecondary, marginTop: 2 }]}>
           Let’s see how your money is doing.
         </Text>
