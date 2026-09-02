@@ -9,6 +9,11 @@ import { ThemeProvider, useTheme } from '../src/theme/ThemeProvider';
 import { SYSTEM_THEMES, THEMES, type ThemeId } from '../src/theme/themes';
 import { Button } from '../src/components/ui/Primitives';
 import { useAppStore } from '../src/store/useAppStore';
+import {
+  SpaceGrotesk_600SemiBold,
+  SpaceGrotesk_700Bold,
+  useFonts,
+} from '@expo-google-fonts/space-grotesk';
 
 /**
  * Root layout.
@@ -121,6 +126,26 @@ function Themed({ children }: { children: React.ReactNode }) {
 }
 
 export default function RootLayout() {
+  /*
+    The display face, loaded before the first paint.
+
+    `useFonts` returns `[loaded, error]`, and the interesting case is the error
+    one. A font that fails to load leaves `fontFamily: 'SpaceGrotesk_700Bold'`
+    pointing at nothing, and the platform silently falls back to the system face
+    — which is fine, and is exactly why this does not block on failure. Holding
+    the whole app behind a font would trade a slightly plainer heading for a
+    blank screen, which is not a trade worth making for typography.
+
+    It does wait on success, because swapping the face after the first paint
+    makes every title jump a few pixels as the metrics change.
+  */
+  const [fontsLoaded, fontError] = useFonts({
+    SpaceGrotesk_600SemiBold,
+    SpaceGrotesk_700Bold,
+  });
+
+  if (!fontsLoaded && !fontError) return null;
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>

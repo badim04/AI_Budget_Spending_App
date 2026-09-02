@@ -30,6 +30,7 @@
   },
   "dependencies": {
     "@babel/runtime": "^8.0.0",
+    "@expo-google-fonts/space-grotesk": "^0.4.1",
     "@types/pako": "^2.0.4",
     "expo": "~52.0.0",
     "expo-application": "~6.0.2",

@@ -309,13 +309,43 @@ export const radius = {
  * amounts jitter as values change, and a balance that shifts sideways while
  * you read it feels unreliable.
  */
+/**
+ * The display face, and where it is allowed.
+ *
+ * Space Grotesk goes on the words and never on the money, and that is a
+ * decision rather than caution.
+ *
+ * Its digits are proportional: read straight out of the TTF's hmtx table, `1`
+ * has an advance of 452 units against `0` at 648 — a 43% difference. In a
+ * column of amounts that is visible misalignment, and under `useCountUp`, which
+ * animates a headline figure digit by digit, it is a number that visibly
+ * wobbles while it counts.
+ *
+ * The font does ship a `tnum` feature, so `fontVariant: ['tabular-nums']` would
+ * fix it — if the feature is honoured, which depends on the text engine and
+ * differs between iOS, Android and web. Money alignment is not worth staking on
+ * an OpenType feature landing identically on three platforms, so figures keep
+ * the system face, which is tabular where it counts and cannot fail to load.
+ *
+ * So: `title` and `heading` carry the character. `hero` and `display` are
+ * almost exclusively `AmountText`, and `body` and below are reading sizes where
+ * a display face's quirks stop being charm and start being friction.
+ */
+const DISPLAY_BOLD = 'SpaceGrotesk_700Bold';
+const DISPLAY_SEMI = 'SpaceGrotesk_600SemiBold';
+
 export const type = {
+  // Figures. System face, so tabular alignment does not depend on a feature.
   hero: { fontSize: 44, lineHeight: 48, fontWeight: '700' as const, letterSpacing: -1.2 },
   display: { fontSize: 32, lineHeight: 38, fontWeight: '700' as const, letterSpacing: -0.8 },
-  // 650 is not a valid React Native weight - only hundreds are - and TypeScript
-  // rejects it outright. Rounded to 700.
-  title: { fontSize: 22, lineHeight: 28, fontWeight: '700' as const, letterSpacing: -0.3 },
-  heading: { fontSize: 17, lineHeight: 22, fontWeight: '600' as const, letterSpacing: -0.1 },
+
+  /*
+    Words. `fontWeight` is dropped on these two on purpose: the family already
+    names the weight, and leaving a weight beside a named face makes Android
+    synthesise a second layer of bold on top of a font that is already bold.
+  */
+  title: { fontSize: 22, lineHeight: 28, fontFamily: DISPLAY_BOLD, letterSpacing: -0.3 },
+  heading: { fontSize: 17, lineHeight: 22, fontFamily: DISPLAY_SEMI, letterSpacing: -0.1 },
   body: { fontSize: 15, lineHeight: 21, fontWeight: '400' as const, letterSpacing: 0 },
   bodyStrong: { fontSize: 15, lineHeight: 21, fontWeight: '600' as const, letterSpacing: 0 },
   caption: { fontSize: 13, lineHeight: 17, fontWeight: '500' as const, letterSpacing: 0 },

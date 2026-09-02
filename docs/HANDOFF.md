@@ -19,7 +19,7 @@ codebase. Expo SDK 52 + React Native 0.76 + TypeScript, expo-router.
   - work in progress is on branch **`v1.2`**
   - real bank statements are gitignored — they carry a real name, address and
     account number, and `tests/fixtures.ts` says so loudly when they are absent
-- **690 tests pass, none skipped**, `tsc --noEmit -p tsconfig.json` is clean,
+- **705 tests pass, none skipped**, `tsc --noEmit -p tsconfig.json` is clean,
   `npx expo-doctor` passes.
 
 Owner is in Nigeria; default currency NGN. Testers are real people getting an
@@ -44,7 +44,12 @@ APK link, including strangers.
 1. **Metro caches aggressively.** When behaviour does not match the code,
    restart with `npm start -- --clear` *before* debugging. This sent a whole
    session chasing a bug that was already fixed.
-2. **Bumping `version` cuts off every phone running the old one.**
+2. **Two native modules were added in v1.2, so it needs an APK.**
+   `expo-linear-gradient` (real gradients) and
+   `@expo-google-fonts/space-grotesk` (the display face). Neither can ship over
+   the air, so the v1.2 release is `npm run apk`; OTA resumes from the next one.
+
+3. **Bumping `version` cuts off every phone running the old one.**
    `runtimeVersion.policy` is `appVersion`, so the OTA runtime *is* the version
    string. Changing `version` from 0.1.1 to 1.2.0 means an `eas update` now
    targets runtime `1.2.0`, and a handset still carrying the 0.1.1 binary will
@@ -57,7 +62,7 @@ APK link, including strangers.
    touched. The app was right and the number was wrong, which reads exactly like
    a failed build.
 
-3. **A new native module means a new APK, and `--clear` first.**
+4. **A new native module means a new APK, and `--clear` first.**
    `expo-linear-gradient` was added in v1.2. Installing it left Metro's dev
    cache stale, and every route 500'd with
    `Cannot read properties of undefined (reading 'get')` — a bundler error that
@@ -183,7 +188,7 @@ Google *restricted scope*; going public needs a CASA security assessment
 ## Commands
 
 ```bash
-npm test                     # 690 tests
+npm test                     # 705 tests
 npx tsc --noEmit -p tsconfig.json
 npm run web                  # localhost:8081
 npm start                    # Expo Go via QR
