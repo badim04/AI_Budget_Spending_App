@@ -157,6 +157,20 @@ describe('decodeText', () => {
  * Native cannot provide fails here, in two seconds, instead of on a device
  * after a fifteen-minute build.
  */
+/**
+ * These three each call `vi.resetModules()` and then cold-import the whole
+ * ingest chain — which pulls in SheetJS — so the module graph is transformed
+ * from scratch every time. That is the point: module-scope code has to run
+ * under the restricted decoder, and a cached module would not re-run it.
+ *
+ * It also makes them the slowest tests in the suite, and the 5s default was
+ * marginal enough to fail whenever the machine was busy with a build. The
+ * timeout is stated explicitly rather than left to chance: what is being
+ * checked is that the module *works* under Expo's decoder, never that it loads
+ * quickly, so a slow machine failing this test tells nobody anything true.
+ */
+const COLD_IMPORT_TIMEOUT = 20_000;
+
 describe("with Expo's UTF-8-only TextDecoder", () => {
   const real = globalThis.TextDecoder;
 
@@ -191,7 +205,7 @@ describe("with Expo's UTF-8-only TextDecoder", () => {
 
     expect(source.format).toBe('csv');
     expect(source.rows.length).toBe(2);
-  });
+  }, COLD_IMPORT_TIMEOUT);
 
   it('loads the PDF reader, which is where the crash was', async () => {
     globalThis.TextDecoder = Utf8OnlyTextDecoder as unknown as typeof TextDecoder;
@@ -204,7 +218,7 @@ describe("with Expo's UTF-8-only TextDecoder", () => {
     const result = extractPdfText(new TextEncoder().encode('%PDF-1.4\nnot really\n'));
     expect(result.lines).toEqual([]);
     expect(result.warning).toBeTruthy();
-  });
+  }, COLD_IMPORT_TIMEOUT);
 
   it('reads a UTF-16 statement, which TextDecoder could not have', async () => {
     globalThis.TextDecoder = Utf8OnlyTextDecoder as unknown as typeof TextDecoder;
@@ -222,5 +236,5 @@ describe("with Expo's UTF-8-only TextDecoder", () => {
 
     const source = readStatement(utf16, 'statement.csv');
     expect(source.rows[0]).toEqual(['Date', 'Amount']);
-  });
+  }, COLD_IMPORT_TIMEOUT);
 });

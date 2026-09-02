@@ -662,7 +662,16 @@ export default function TransactionsScreen() {
       <SectionList
         sections={sections}
         keyExtractor={(item) => item.id}
-        stickySectionHeadersEnabled
+        /*
+          Not sticky any more.
+
+          A sticky heading earned its place when the rows were undifferentiated
+          — it was the only thing telling you where one day ended. Now each day
+          is its own card, the grouping is visible without it, and a
+          canvas-coloured bar floating over a rounded surface looks like a
+          rendering fault rather than a feature.
+        */
+        stickySectionHeadersEnabled={false}
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={{ paddingBottom: insets.bottom + 96 }}
         renderSectionHeader={({ section }) => {
@@ -681,7 +690,8 @@ export default function TransactionsScreen() {
               style={{
                 backgroundColor: c.canvas,
                 paddingHorizontal: layout.gutter,
-                paddingVertical: sp.sm,
+                paddingTop: sp.lg,
+                paddingBottom: sp.sm,
                 flexDirection: 'row',
                 alignItems: 'center',
                 justifyContent: 'space-between',
@@ -691,22 +701,61 @@ export default function TransactionsScreen() {
                 {relativeDate(section.title, today()).toUpperCase()}
               </Text>
               <Text
-                style={[
-                  t.micro,
-                  { color: c.textMuted, fontVariant: ['tabular-nums'] },
-                ]}
+                style={[t.micro, { color: c.textMuted, fontVariant: ['tabular-nums'] }]}
               >
                 {formatMoney(money(net, section.data[0].currency))}
               </Text>
             </View>
           );
         }}
-        renderItem={({ item }) => {
+        renderItem={({ item, index, section }) => {
           const category = categories.find((cat) => cat.id === item.categoryId);
           const filed = justFiled.has(item.id);
+          const first = index === 0;
+          const last = index === section.data.length - 1;
 
           return (
-            <View>
+            /*
+              Each day is a card, not a run of naked rows.
+
+              "All" and "Needs review" are one screen and were two visual
+              languages: the queue was a grid of rounded, bordered tiles and
+              this was unstyled rows sitting straight on the canvas with nothing
+              between them. Switching tabs looked like switching apps.
+
+              A ledger is genuinely a list — forcing it into a grid would cost
+              the chronology that makes it readable — so the fix is not the same
+              shape, it is the same *material*. Rows now sit on a surface with
+              rounded ends per day, which is what every other list in the app is
+              made of.
+            */
+            <View
+              style={{
+                marginHorizontal: layout.gutter,
+                backgroundColor: c.surface,
+                borderLeftWidth: StyleSheet.hairlineWidth,
+                borderRightWidth: StyleSheet.hairlineWidth,
+                borderTopWidth: first ? StyleSheet.hairlineWidth : 0,
+                borderBottomWidth: last ? StyleSheet.hairlineWidth : 0,
+                borderColor: c.border,
+                borderTopLeftRadius: first ? r.lg : 0,
+                borderTopRightRadius: first ? r.lg : 0,
+                borderBottomLeftRadius: last ? r.lg : 0,
+                borderBottomRightRadius: last ? r.lg : 0,
+              }}
+            >
+              {/* Hairline between rows, inset past the icon so it separates the
+                  text rather than cutting the whole card in half. */}
+              {first ? null : (
+                <View
+                  style={{
+                    height: StyleSheet.hairlineWidth,
+                    backgroundColor: c.border,
+                    marginLeft: sp.lg + 38 + sp.md,
+                  }}
+                />
+              )}
+
               <Pressable
                 onPress={() =>
                   item.reviewed && !filed
@@ -716,9 +765,9 @@ export default function TransactionsScreen() {
                 style={({ pressed }) => [
                   styles.row,
                   {
-                    paddingHorizontal: layout.gutter,
+                    paddingHorizontal: sp.lg,
                     paddingVertical: sp.md,
-                    opacity: pressed ? 0.6 : 1,
+                    backgroundColor: pressed ? c.surfaceRaised : 'transparent',
                   },
                 ]}
                 accessibilityRole="button"
@@ -765,14 +814,30 @@ export default function TransactionsScreen() {
         ListEmptyComponent={
           <View style={{ padding: sp.xxl, alignItems: 'center' }}>
             <Spot name="inbox" size={104} tone="violet" />
-            <Text style={[t.body, { color: c.textMuted, marginTop: sp.md, textAlign: 'center' }]}>
+            {/* Same register as the queue's empty state — the two are one
+                screen and were speaking differently. */}
+            <Text style={[t.bodyStrong, { color: c.textPrimary, marginTop: sp.md }]}>
               {query
-                ? 'Nothing matches that search.'
+                ? copyFor('noSearchMatch', today()).title
                 : focused
-                  ? 'Nothing in that category for this period.'
+                  ? 'Nothing filed there'
                   : filter === 'review'
-                    ? `Nothing to review in money ${direction}.`
-                    : 'No transactions yet.'}
+                    ? copyFor('nothingToReview', today()).title
+                    : copyFor('noTransactions', today()).title}
+            </Text>
+            <Text
+              style={[
+                t.caption,
+                { color: c.textMuted, marginTop: 4, textAlign: 'center', maxWidth: 320 },
+              ]}
+            >
+              {query
+                ? copyFor('noSearchMatch', today()).body
+                : focused
+                  ? 'No transactions in that category for this period.'
+                  : filter === 'review'
+                    ? copyFor('nothingToReview', today()).body
+                    : copyFor('noTransactions', today()).body}
             </Text>
             {!query && filter === 'all' ? (
               <View style={{ marginTop: sp.lg }}>
