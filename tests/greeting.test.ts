@@ -160,10 +160,13 @@ describe('greeting', () => {
       expect(seen.size).toBeGreaterThanOrEqual(3);
     });
 
-    it('offers the twelve it claims to', () => {
-      expect(ALL_LANGUAGES).toHaveLength(12);
+    it('offers every one it claims to', () => {
+      expect(ALL_LANGUAGES).toHaveLength(16);
       expect(new Set(ALL_LANGUAGES).size).toBe(ALL_LANGUAGES.length);
-      for (const code of ['en', 'pcm', 'yo', 'ig', 'ha', 'fr', 'es', 'it', 'ja', 'ko', 'zh', 'ar']) {
+      for (const code of [
+        'en', 'pcm', 'yo', 'ig', 'ha', 'fr', 'es', 'it', 'ja', 'ko', 'zh', 'ar',
+        'ja-Latn', 'ko-Latn', 'zh-Latn', 'ar-Latn',
+      ]) {
         expect(ALL_LANGUAGES).toContain(code as GreetingLanguage);
       }
     });
@@ -297,5 +300,79 @@ describe('right-to-left', () => {
     const line = greeting(AT('2026-08-31T09:00:00'), { mode: 'fr', name: 'Adebayo' });
     expect(line).not.toContain('\u2068');
     expect(line).toContain(', Adebayo');
+  });
+});
+
+describe('romanisations', () => {
+  const PAIRS = GREETING_LANGUAGES.filter((l) => l.romanises);
+  const HOURS = [2, 6, 10, 14, 19, 23];
+
+  const lineAt = (code: GreetingLanguage, hour: number) => {
+    const at = AT('2026-08-31T00:00:00');
+    at.setHours(hour);
+    return greeting(at, { mode: code });
+  };
+
+  it('offers one for each of the four non-Latin scripts', () => {
+    expect(PAIRS.map((l) => l.romanises).sort()).toEqual(['ar', 'ja', 'ko', 'zh']);
+  });
+
+  /**
+   * The whole point: readable by someone who cannot read the source script.
+   */
+  it.each(PAIRS.map((l) => l.code))('%s is written in Latin script only', (code) => {
+    for (const hour of HOURS) {
+      const line = lineAt(code as GreetingLanguage, hour).replace(' 👋', '');
+      // No CJK, kana, hangul or Arabic anywhere in it.
+      expect(line, `${code}@${hour}`).not.toMatch(
+        /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af\u0600-\u06ff]/
+      );
+      expect(line.length).toBeGreaterThan(3);
+    }
+  });
+
+  it.each(PAIRS.map((l) => l.code))('%s says something different in each part of the day', (code) => {
+    const seen = new Set(HOURS.map((h) => lineAt(code as GreetingLanguage, h)));
+    expect(seen.size).toBeGreaterThan(1);
+  });
+
+  /**
+   * A romanisation of an RTL language is Latin text and reads left to right.
+   *
+   * Marking it RTL because its parent is would apply the bidi isolate to a line
+   * that does not need one, breaking exactly what the isolate was added to fix.
+   */
+  it('never marks a romanisation as right-to-left', () => {
+    for (const language of PAIRS) {
+      expect(isRtl(language.code), language.code).toBe(false);
+    }
+    expect(isRtl('ar')).toBe(true);
+  });
+
+  it('gives ar-Latn a Latin comma and no isolate', () => {
+    const line = greeting(AT('2026-08-31T09:00:00'), { mode: 'ar-Latn', name: 'Adebayo' });
+    expect(line).toContain(', Adebayo');
+    expect(line).not.toContain('\u2068');
+    expect(line).not.toContain('\u060c');
+  });
+
+  it('keeps pinyin tone marks, which carry the pronunciation', () => {
+    const line = greeting(AT('2026-08-31T09:00:00'), { mode: 'zh-Latn' });
+    expect(line).toMatch(/[āáǎàēéěèīíǐìōóǒòūúǔù]/);
+  });
+
+  /** Each is a separate entry, so it can be ticked on its own in a mix. */
+  it('can be mixed independently of the script it romanises', () => {
+    const seen = new Set<GreetingLanguage>();
+    for (let day = 1; day <= 30; day++) {
+      seen.add(
+        languageFor(
+          { mode: 'rotate', mix: ['ja-Latn', 'ko-Latn'], pace: 'daily' },
+          'morning',
+          `2026-09-${day}`
+        )
+      );
+    }
+    expect([...seen].sort()).toEqual(['ja-Latn', 'ko-Latn']);
   });
 });

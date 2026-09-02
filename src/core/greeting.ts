@@ -44,7 +44,22 @@ export type GreetingLanguage =
   | 'ja'
   | 'ko'
   | 'zh'
-  | 'ar';
+  | 'ar'
+  /*
+    Romanisations, as separate languages rather than a display toggle.
+
+    Someone who wants to be greeted in Japanese but does not read kana is asking
+    for a different thing from someone who reads kana — not for the same thing
+    rendered differently. Making them separate entries means they can be ticked
+    independently in a mix, which a toggle could not express.
+
+    `-Latn` is the BCP 47 script subtag, so these are real language tags rather
+    than invented codes.
+  */
+  | 'ja-Latn'
+  | 'ko-Latn'
+  | 'zh-Latn'
+  | 'ar-Latn';
 
 /** How often a mix changes language. */
 export type MixPace = 'daily' | 'slot';
@@ -65,6 +80,8 @@ export const GREETING_LANGUAGES: Array<{
    * side of the line. See `greeting` for the fix.
    */
   rtl?: boolean;
+  /** Set when this entry is a Latin-script rendering of another language. */
+  romanises?: GreetingLanguage;
 }> = [
   { code: 'en', label: 'English', sample: 'Good morning' },
   { code: 'pcm', label: 'Pidgin', sample: 'Morning o' },
@@ -74,10 +91,33 @@ export const GREETING_LANGUAGES: Array<{
   { code: 'fr', label: 'Français', sample: 'Bonjour' },
   { code: 'es', label: 'Español', sample: 'Buenos días' },
   { code: 'it', label: 'Italiano', sample: 'Buongiorno' },
+
+  /*
+    Each script is followed immediately by its Latin rendering.
+
+    Ordering is the whole of the pairing: with the romanisations grouped at the
+    end of the list, "日本語" sat four chips away from "Japanese (rōmaji)" and
+    nothing on screen said they were the same greeting. Adjacent, the labels do
+    that work and the picker needs no extra chrome to explain itself.
+  */
   { code: 'ja', label: '日本語', sample: 'おはようございます' },
+  { code: 'ja-Latn', label: 'Japanese (rōmaji)', sample: 'Ohayō gozaimasu', romanises: 'ja' },
+
   { code: 'ko', label: '한국어', sample: '좋은 아침이에요' },
+  { code: 'ko-Latn', label: 'Korean (romaja)', sample: 'Joeun achimieyo', romanises: 'ko' },
+
   { code: 'zh', label: '中文', sample: '早上好' },
+  { code: 'zh-Latn', label: 'Chinese (pinyin)', sample: 'Zǎoshang hǎo', romanises: 'zh' },
+
   { code: 'ar', label: 'العربية', sample: 'صباح الخير', rtl: true },
+  /*
+    Deliberately NOT rtl.
+
+    A romanisation of an RTL language is left-to-right text — it is Latin script
+    — so it must not get the isolate treatment its parent needs. Marking it RTL
+    because Arabic is RTL would break the one line it was added to fix.
+  */
+  { code: 'ar-Latn', label: 'Arabic (Latin)', sample: 'Sabah al-khayr', romanises: 'ar' },
 ];
 
 /** Codes only, for defaults and validation. */
@@ -202,6 +242,48 @@ const LINES: Record<GreetingLanguage, Record<Slot, string[]>> = {
     afternoon: ['مساء الخير'],
     evening: ['مساء الخير'],
     night: ['مساء الخير'],
+  },
+
+  /*
+    The romanisations, line for line with their parents above.
+
+    Each uses the standard system for its language rather than an ad-hoc
+    spelling, because the point is that someone can read it aloud and be
+    understood: Hepburn for Japanese, Revised Romanization for Korean, Hanyu
+    Pinyin with tone marks for Chinese. Pinyin keeps its tone marks — they are
+    the pronunciation, and stripping them makes the word ambiguous.
+
+    Arabic is romanised without academic diacritics. This is for reading, not
+    for transcription, and "Ṣabāḥ al-khayr" helps nobody who came here because
+    they could not read the script in the first place.
+  */
+  'ja-Latn': {
+    earlyMorning: ['Ohayō gozaimasu'],
+    morning: ['Ohayō gozaimasu'],
+    afternoon: ['Konnichiwa'],
+    evening: ['Konbanwa'],
+    night: ['Konbanwa'],
+  },
+  'ko-Latn': {
+    earlyMorning: ['Joeun achimieyo'],
+    morning: ['Joeun achimieyo', 'Annyeonghaseyo'],
+    afternoon: ['Annyeonghaseyo'],
+    evening: ['Joeun jeonyeogieyo', 'Annyeonghaseyo'],
+    night: ['Annyeonghaseyo'],
+  },
+  'zh-Latn': {
+    earlyMorning: ['Zǎoshang hǎo'],
+    morning: ['Zǎoshang hǎo'],
+    afternoon: ['Xiàwǔ hǎo'],
+    evening: ['Wǎnshang hǎo'],
+    night: ['Wǎnshang hǎo'],
+  },
+  'ar-Latn': {
+    earlyMorning: ['Sabah al-khayr'],
+    morning: ['Sabah al-khayr'],
+    afternoon: ['Masa al-khayr'],
+    evening: ['Masa al-khayr'],
+    night: ['Masa al-khayr'],
   },
 };
 
