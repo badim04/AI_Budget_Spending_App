@@ -3,6 +3,7 @@ import { ScrollView, View, Text, Pressable, TextInput, StyleSheet } from 'react-
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../src/theme/ThemeProvider';
+import { AppHeader } from '../../src/components/ui/AppHeader';
 import { useLayout } from '../../src/theme/layout';
 import { Spot } from '../../src/components/art/Spot';
 import { AmountText, BudgetBar, Button, Card, SectionHeader } from '../../src/components/ui/Primitives';
@@ -125,10 +126,10 @@ export default function BudgetsScreen() {
         alignSelf: 'center',
       }}
     >
-      <Text style={[t.title, { color: c.textPrimary }]}>Budgets</Text>
-      <Text style={[t.caption, { color: c.textMuted, marginTop: sp.xs }]}>
-        {statuses[0]?.range.label ?? formatDate(today(), 'medium')}
-      </Text>
+      <AppHeader
+        title="Budgets"
+        subtitle={statuses[0]?.range.label ?? formatDate(today(), 'medium')}
+      />
 
       {statuses.length === 0 ? (
         <Card style={{ marginTop: sp.xl }}>

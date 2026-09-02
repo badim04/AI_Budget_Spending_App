@@ -21,6 +21,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useTheme } from '../../src/theme/ThemeProvider';
+import { AppHeader } from '../../src/components/ui/AppHeader';
 import { useLayout } from '../../src/theme/layout';
 import { Banner, Tile, TileGrid } from '../../src/components/ui/Tiles';
 import { Button, Card } from '../../src/components/ui/Primitives';
@@ -182,10 +183,10 @@ export default function CaptureScreen() {
         alignSelf: 'center',
       }}
     >
-      <Text style={[t.title, { color: c.textPrimary }]}>Add spending</Text>
-      <Text style={[t.body, { color: c.textSecondary, marginTop: sp.xs }]}>
-        The less of this you do by hand, the better the numbers get.
-      </Text>
+      <AppHeader
+        title="Add spending"
+        subtitle="The less of this you do by hand, the better the numbers get."
+      />
 
       {/*
         Six ways in, one grid.

@@ -14,6 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '../../src/theme/ThemeProvider';
+import { AppHeader } from '../../src/components/ui/AppHeader';
 import { columnsFor, useLayout } from '../../src/theme/layout';
 import { useEnter, usePressScale } from '../../src/theme/motion';
 import { AmountText, Pill, Button } from '../../src/components/ui/Primitives';
@@ -378,6 +379,11 @@ export default function TransactionsScreen() {
         }}
       >
       <View style={{ paddingHorizontal: layout.gutter, paddingBottom: sp.md }}>
+        <AppHeader
+          title="Activity"
+          subtitle={`${periodTotals.outCount + periodTotals.inCount} transactions`}
+        />
+
         {focused ? (
           <Pressable
             onPress={() => router.setParams({ category: '', from: '', to: '', label: '' })}

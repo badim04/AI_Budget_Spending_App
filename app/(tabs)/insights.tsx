@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../src/theme/ThemeProvider';
+import { AppHeader } from '../../src/components/ui/AppHeader';
 import { Card, SectionHeader } from '../../src/components/ui/Primitives';
 import { Screen, Grid, Split } from '../../src/components/ui/Screen';
 import { Ring, type RingSlice } from '../../src/components/charts/Ring';
@@ -112,28 +113,12 @@ export default function InsightsScreen() {
 
   return (
     <Screen>
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <Text style={[t.title, { color: c.textPrimary }]}>Insights</Text>
-        <Pressable
-          onPress={() => router.push('/reports')}
-          accessibilityRole="button"
-          accessibilityLabel="Export a report"
-          hitSlop={10}
-          style={({ pressed }) => ({
-            flexDirection: 'row',
-            alignItems: 'center',
-            paddingHorizontal: sp.md,
-            paddingVertical: sp.sm,
-            borderRadius: 999,
-            backgroundColor: pressed ? c.accentSubtle : c.surface,
-            borderWidth: 0.5,
-            borderColor: c.border,
-          })}
-        >
-          <Ionicons name="download-outline" size={15} color={c.accent} />
-          <Text style={[t.caption, { color: c.accent, marginLeft: 6 }]}>Export</Text>
-        </Pressable>
-      </View>
+      <AppHeader title="Insights" />
+
+      {/* Export sits with the segmented track rather than in the header: the
+          header's three actions are the same on every tab, and a fourth that
+          only appears here would make the row mean something different from
+          screen to screen. */}
 
       {/* Insights and Analysis are siblings, one tap apart. */}
       <View style={{ marginTop: sp.md }}>

@@ -128,8 +128,16 @@ password-protected PDFs supported) · Gmail OAuth + import review · report
 export (**PDF, Excel, CSV**) · SQLite on device / localStorage on web · OTA
 updates · budget alert notifications · goals · demo data.
 
-Navigation: bottom bar on phones (5 tabs), side rail ≥600pt. Goals and Settings
-sit in the dashboard header.
+Navigation: bottom bar on phones (5 tabs), side rail ≥600pt. **`AppHeader` runs
+across every tab** and carries the three things that must be reachable from
+anywhere — a labelled **Ask** pill, the notifications bell, and an avatar into
+**Profile** (which is Settings, with you at the top of it). Goals lost its
+header icon to make room and is a row in Profile plus a tile on Home.
+
+A sixth tab was the obvious answer and the wrong one: six destinations across a
+360pt phone is ~50pt each, under what a thumb reliably hits. The bottom bar is
+for what you tap many times a day; Ask needs to be *available*, which is a
+different requirement.
 
 ---
 
@@ -262,6 +270,7 @@ Pieces to build with — do not invent new ones without checking these first:
 | `theme/layout` → `useLayout`, `columnsFor` | phone / tablet / desktop, and how many fit across |
 | `ui/FeatureCard` | one saturated fill behind a headline figure |
 | `ui/SettingsList` | grouped rows with state on the right |
+| `ui/AppHeader` | every tab's header: title, **Ask**, bell, profile avatar |
 | `ui/DateField` | calendar picker — never a typed date |
 | `ui/Primitives` → `Button`, `FabButton` | pill, press-scale, `tone`/`size`/`loading` |
 | `art/Mascot` (Fin, 5 poses), `art/Spot` (8 scenes) | SVG, theme-coloured |

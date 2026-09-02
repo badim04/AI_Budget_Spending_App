@@ -23,6 +23,7 @@ import React, { useMemo, useState } from 'react';
 import { View, Text, useWindowDimensions } from 'react-native';
 import { router } from 'expo-router';
 import { useTheme } from '../../src/theme/ThemeProvider';
+import { AppHeader } from '../../src/components/ui/AppHeader';
 import { useLayout } from '../../src/theme/layout';
 import { Screen, Grid, Split } from '../../src/components/ui/Screen';
 import {
@@ -182,9 +183,7 @@ export default function AnalysisScreen() {
 
   return (
     <Screen>
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <Text style={[t.title, { color: c.textPrimary }]}>Analysis</Text>
-      </View>
+      <AppHeader title="Analysis" />
 
       {/* Insights and Analysis are one tap apart, not two. */}
       <View style={{ marginTop: sp.md }}>

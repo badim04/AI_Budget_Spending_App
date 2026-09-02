@@ -12,6 +12,7 @@ import { ScrollView, View, Text, TextInput, Pressable, Platform, Alert, StyleShe
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../src/theme/ThemeProvider';
+import { AppHeader } from '../../src/components/ui/AppHeader';
 import { useLayout } from '../../src/theme/layout';
 import { Grid } from '../../src/components/ui/Screen';
 import { StatRow, StatTile } from '../../src/components/ui/Tiles';
@@ -87,14 +88,22 @@ export default function GoalsScreen() {
         alignSelf: 'center',
       }}
     >
-      <View style={styles.spread}>
-        <Text style={[t.title, { color: c.textPrimary }]}>Goals</Text>
-        {active.length > 0 && !composing ? (
-          <Pressable onPress={() => setComposing(true)} hitSlop={12} accessibilityRole="button">
-            <Ionicons name="add-circle-outline" size={26} color={c.accent} />
+      <AppHeader title="Goals" />
+
+      {active.length > 0 && !composing ? (
+        <View style={{ alignItems: 'flex-end', marginTop: -sp.sm, marginBottom: sp.sm }}>
+          <Pressable
+            onPress={() => setComposing(true)}
+            hitSlop={12}
+            accessibilityRole="button"
+            accessibilityLabel="Add a goal"
+            style={{ flexDirection: 'row', alignItems: 'center' }}
+          >
+            <Ionicons name="add-circle-outline" size={18} color={c.accent} />
+            <Text style={[t.caption, { color: c.accent, marginLeft: 5 }]}>New goal</Text>
           </Pressable>
-        ) : null}
-      </View>
+        </View>
+      ) : null}
 
       {composing ? (
         <GoalComposer

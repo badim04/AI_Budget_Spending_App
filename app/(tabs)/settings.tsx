@@ -23,6 +23,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useTheme } from '../../src/theme/ThemeProvider';
+import { AppHeader } from '../../src/components/ui/AppHeader';
 import { useLayout } from '../../src/theme/layout';
 import { Button } from '../../src/components/ui/Primitives';
 import { SettingsGroup, SettingsRow } from '../../src/components/ui/SettingsList';
@@ -77,6 +78,7 @@ export default function SettingsScreen() {
 
   const settings = useAppStore((s) => s.settings);
   const accounts = useAppStore((s) => s.accounts);
+  const allGoals = useAppStore((s) => s.goals);
   const transactions = useAppStore((s) => s.transactions);
   const receipts = useAppStore((s) => s.receipts);
   const repositoryKind = useAppStore((s) => s.repositoryKind);
@@ -107,6 +109,7 @@ export default function SettingsScreen() {
 
   const displayCurrency = settings.display_currency ?? 'NGN';
   const liveTransactionCount = transactions.filter((x) => !x.deletedAt).length;
+  const goals = allGoals.filter((g) => !g.archived);
   const ocr = ocrStatus();
 
   React.useEffect(() => {
@@ -159,11 +162,67 @@ export default function SettingsScreen() {
         alignSelf: 'center',
       }}
     >
-      {/* Display currency is a preference, not a section. It was eight chips
-          taking a whole card near the top of the page for something most
-          people set once — so it lives in the header, showing its value. */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <Text style={[t.title, { color: c.textPrimary }]}>Settings</Text>
+      <AppHeader title="Profile" />
+
+      {/*
+        You, before your preferences.
+
+        Settings and Profile were the same destination asked for two different
+        ways — one is the app's knobs, the other is the person turning them, and
+        splitting them would have meant two entries in a header that already had
+        too many. So this page opens on who you are and what is on record, and
+        the preferences follow underneath.
+
+        The figures are counts rather than money on purpose: this page is about
+        the account, and a balance here would be a fourth place the same total
+        is printed and a fourth place it could disagree.
+      */}
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          backgroundColor: c.surface,
+          borderRadius: r.lg,
+          borderWidth: StyleSheet.hairlineWidth,
+          borderColor: c.border,
+          padding: sp.lg,
+        }}
+      >
+        <View
+          style={{
+            width: 56,
+            height: 56,
+            borderRadius: 28,
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: c.accentSubtle,
+            borderWidth: StyleSheet.hairlineWidth,
+            borderColor: c.accent,
+          }}
+        >
+          {(settings.user_name ?? '').trim() ? (
+            <Text style={[t.title, { color: c.accent }]}>
+              {(settings.user_name ?? '').trim().charAt(0).toUpperCase()}
+            </Text>
+          ) : (
+            <Ionicons name="person-outline" size={24} color={c.accent} />
+          )}
+        </View>
+
+        <View style={{ flex: 1, marginLeft: sp.lg }}>
+          <Text style={[t.heading, { color: c.textPrimary }]} numberOfLines={1}>
+            {(settings.user_name ?? '').trim() || 'Add your name'}
+          </Text>
+          <Text style={[t.micro, { color: c.textMuted, marginTop: 2 }]}>
+            {liveTransactionCount} transaction{liveTransactionCount === 1 ? '' : 's'} ·{' '}
+            {accounts.length} account{accounts.length === 1 ? '' : 's'} · {goals.length} goal
+            {goals.length === 1 ? '' : 's'}
+          </Text>
+        </View>
+
+        {/* Display currency was eight chips filling a card near the top of the
+            page, for something most people set once. It shows its value and
+            opens on tap. */}
         <Pressable
           onPress={() => setCurrencyOpen(true)}
           accessibilityRole="button"
@@ -183,6 +242,22 @@ export default function SettingsScreen() {
           <Ionicons name="chevron-down" size={14} color={c.accent} style={{ marginLeft: 4 }} />
         </Pressable>
       </View>
+
+      {/* Goals lost its header icon when the header gained Ask; it is a row
+          here and a tile on Home, so it did not get further away. */}
+      <SettingsGroup title="You">
+        <SettingsRow
+          icon="🎯"
+          label="Goals"
+          value={goals.length ? `${goals.length} active` : 'None yet'}
+          onPress={() => router.push('/goals')}
+        />
+        <SettingsRow
+          icon="🔔"
+          label="Notifications"
+          onPress={() => router.push('/notifications')}
+        />
+      </SettingsGroup>
 
       <Modal visible={currencyOpen} transparent animationType="fade" onRequestClose={() => setCurrencyOpen(false)}>
         <Pressable
@@ -685,7 +760,7 @@ export default function SettingsScreen() {
           label="Sign-in and app lock"
           value="Not set up"
           tone="warning"
-          hint="Finlo has no accounts yet, so there is nothing to sign in to and no lock on the app. Anyone who can open your phone can open Finlo."
+          hint="Finlo has no accounts yet, so there is nothing to sign in to and no lock on the app. Anyone who can open your phone can open Finlo. Real accounts with email sign-in are the chosen next step — see docs/BACKLOG.md."
         />
         <SettingsRow
           icon="⭐"
@@ -701,11 +776,6 @@ export default function SettingsScreen() {
           onPress={() => router.push('/ask')}
         />
         <SettingsRow icon="❓" label="Help" onPress={() => router.push('/help')} />
-        <SettingsRow
-          icon="🔔"
-          label="Notifications"
-          onPress={() => router.push('/notifications')}
-        />
       </SettingsGroup>
 
       {/* ------------------------------------------------------------ about */}
