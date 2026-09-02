@@ -19,7 +19,7 @@ codebase. Expo SDK 52 + React Native 0.76 + TypeScript, expo-router.
   - work in progress is on branch **`v1.2`**
   - real bank statements are gitignored — they carry a real name, address and
     account number, and `tests/fixtures.ts` says so loudly when they are absent
-- **574 tests pass, none skipped**, `tsc --noEmit -p tsconfig.json` is clean,
+- **690 tests pass, none skipped**, `tsc --noEmit -p tsconfig.json` is clean,
   `npx expo-doctor` passes.
 
 Owner is in Nigeria; default currency NGN. Testers are real people getting an
@@ -183,7 +183,7 @@ Google *restricted scope*; going public needs a CASA security assessment
 ## Commands
 
 ```bash
-npm test                     # 574 tests
+npm test                     # 690 tests
 npx tsc --noEmit -p tsconfig.json
 npm run web                  # localhost:8081
 npm start                    # Expo Go via QR
@@ -268,6 +268,8 @@ Pieces to build with — do not invent new ones without checking these first:
 | `charts/Ring`, `RingLegend` | donut with the total in the hole, key beside it |
 | `ui/Screen` → `Screen`, `Grid`, `Split` | the page shell, the reflowing grid, two panels side by side |
 | `theme/layout` → `useLayout`, `columnsFor` | phone / tablet / desktop, and how many fit across |
+| `theme/themes` → `THEMES`, `buildPalette` | four named themes, 35 tokens derived from five |
+| `theme/color` → `readableOn`, `contrast` | the colour maths the themes are checked against |
 | `ui/FeatureCard` | one saturated fill behind a headline figure |
 | `ui/SettingsList` | grouped rows with state on the right |
 | `ui/AppHeader` | every tab's header: title, **Ask**, bell, profile avatar |

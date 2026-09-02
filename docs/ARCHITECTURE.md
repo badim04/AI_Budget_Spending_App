@@ -242,6 +242,52 @@ Blocking is kinder than validating afterwards. Everything is a `YYYY-MM-DD`
 string parsed as UTC via `core/dates`, never a local `Date` waiting to shift by
 one.
 
+### A theme is five colours, and thirty-five are derived
+
+Four named themes replaced "light / dark" in v1.2. Light and dark describe a
+setting; they do not describe a look, and an app someone opens several times a
+day is worth letting them furnish.
+
+A palette here has 35 tokens. Four written by hand is 140 colours, most of them
+mechanical — a border is the step between a surface and its text, a pressed
+accent is the accent darkened, a subtle accent is the accent at low alpha. That
+is 140 chances to be slightly wrong with no way to notice. So a theme declares
+the five that carry its identity (canvas, surface, two accents, text) and
+`theme/color.ts` derives the rest.
+
+Three constraints outrank the aesthetics, and each is a test rather than a
+habit:
+
+**Text must be readable, measured.** WCAG AA on canvas, on cards, and on raised
+surfaces, in every theme. The one that earns its keep is `onAccent`: Midnight
+Tokyo's primary accent is Jolt Yellow `#FFCC00`, and white on it is a contrast
+ratio of 1.7. A single-theme app can hardcode `onAccent: '#ffffff'` and get away
+with it forever; a themed one ships a button nobody can read. `readableOn`
+measures both candidates and picks the winner.
+
+The same idea caught a subtler one. Feature fills are gradients, and the label
+was chosen against the light end only — on Neon Magenta, dark text wins there
+and has fallen to 2.98 by the time the gradient reaches its far end. Two themes
+failed on it. Both candidates are now scored on their *worst* end, which is what
+"readable on this card" means when the card is not one colour.
+
+**The accent must not look like a status colour.** Green, amber and red mean
+something in a finance app and have to keep meaning it after a theme paints the
+primary button yellow. When an accent lands too close to one, the *status*
+colour moves — never the accent, because the accent is the theme's identity and
+the status colour is furniture that only has to stay recognisable.
+
+**Series colours are not the theme's to change.** A chart hue encodes a
+category, so it cannot be chosen for looks; the eight-hue set is validated for
+contrast and colour-vision deficiency. Themes pick the light or dark variant and
+nothing else. A test asserts the array is untouched.
+
+"Match my phone" is no longer a mode flag — three of the four themes are dark
+and one is light, so following the OS nominates one theme on each side. Builds
+that stored `'light'` or `'dark'` map onto those nominations rather than being
+dropped, because silently ignoring a preference someone set is worse than
+migrating it.
+
 ### Side by side is not decoration, it is the comparison
 
 `Tiles.tsx` grew three pieces, each because two or more screens were hand-rolling

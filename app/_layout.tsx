@@ -6,6 +6,7 @@ import Head from 'expo-router/head';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { ThemeProvider, useTheme } from '../src/theme/ThemeProvider';
+import { SYSTEM_THEMES, THEMES, type ThemeId } from '../src/theme/themes';
 import { Button } from '../src/components/ui/Primitives';
 import { useAppStore } from '../src/store/useAppStore';
 
@@ -98,8 +99,25 @@ function Shell() {
  */
 function Themed({ children }: { children: React.ReactNode }) {
   const preference = useAppStore((s) => s.settings.theme);
-  const mode = preference === 'light' || preference === 'dark' ? preference : 'system';
-  return <ThemeProvider override={mode}>{children}</ThemeProvider>;
+  /*
+    The stored value is a theme id now, not a mode.
+
+    Builds before v1.2 stored 'light' or 'dark'. Those are not theme ids, and
+    passing one through would fall back to the default and silently ignore a
+    preference someone had set — so they are mapped onto the theme nominated
+    for that side rather than dropped.
+  */
+  const stored =
+    preference === 'light'
+      ? SYSTEM_THEMES.light
+      : preference === 'dark'
+        ? SYSTEM_THEMES.dark
+        : preference;
+
+  const override =
+    stored && THEMES.some((t) => t.id === stored) ? (stored as ThemeId) : 'system';
+
+  return <ThemeProvider override={override}>{children}</ThemeProvider>;
 }
 
 export default function RootLayout() {

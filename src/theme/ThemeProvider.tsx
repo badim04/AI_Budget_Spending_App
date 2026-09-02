@@ -1,9 +1,19 @@
 import React, { createContext, useContext, useMemo } from 'react';
 import { useColorScheme } from 'react-native';
-import { PALETTES, chart, elevation, motion, radius, space, type, type Palette, type ThemeMode } from './tokens';
+import { chart, elevation, motion, radius, space, type, type Palette, type ThemeMode } from './tokens';
+import {
+  DEFAULT_THEME,
+  PALETTE_BY_THEME,
+  SYSTEM_THEMES,
+  themeSeed,
+  type ThemeId,
+} from './themes';
 
 export interface Theme {
   mode: ThemeMode;
+  /** Which named theme is showing, so a screen can say so. */
+  themeId: ThemeId;
+  themeName: string;
   c: Palette;
   space: typeof space;
   radius: typeof radius;
@@ -20,26 +30,37 @@ export function ThemeProvider({
   override,
 }: {
   children: React.ReactNode;
-  /** 'system' follows the OS; anything else pins the mode. */
-  override?: ThemeMode | 'system';
+  /**
+   * A theme id, or 'system' to follow the OS.
+   *
+   * 'system' is not a mode any more: three of the four themes are dark and one
+   * is light, so following the phone means nominating one of each rather than
+   * flipping a flag. See `SYSTEM_THEMES`.
+   */
+  override?: ThemeId | 'system';
 }) {
   const system = useColorScheme();
-  const mode: ThemeMode =
-    override && override !== 'system' ? override : system === 'light' ? 'light' : 'dark';
 
-  const value = useMemo<Theme>(
-    () => ({
-      mode,
-      c: PALETTES[mode],
+  const themeId: ThemeId =
+    override && override !== 'system'
+      ? override
+      : SYSTEM_THEMES[system === 'light' ? 'light' : 'dark'];
+
+  const value = useMemo<Theme>(() => {
+    const seed = themeSeed(themeId);
+    return {
+      mode: seed.scheme,
+      themeId: seed.id,
+      themeName: seed.name,
+      c: PALETTE_BY_THEME[seed.id] ?? PALETTE_BY_THEME[DEFAULT_THEME],
       space,
       radius,
       type,
       elevation,
       chart,
       motion,
-    }),
-    [mode]
-  );
+    };
+  }, [themeId]);
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }

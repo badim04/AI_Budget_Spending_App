@@ -26,6 +26,12 @@ import { useTheme } from '../../src/theme/ThemeProvider';
 import { AppHeader } from '../../src/components/ui/AppHeader';
 import { greeting, serialiseMix } from '../../src/core/greeting';
 import {
+  PALETTE_BY_THEME,
+  SYSTEM_THEMES,
+  THEMES,
+  themeSeed,
+} from '../../src/theme/themes';
+import {
   GreetingPicker,
   describeGreetingChoice,
   readGreetingSettings,
@@ -716,47 +722,114 @@ export default function SettingsScreen() {
           like the odd one.
         */}
         <Text style={[t.micro, { color: c.textMuted, marginTop: sp.xl }]}>THEME</Text>
-        <View style={{ flexDirection: 'row', marginTop: sp.md }}>
-          {(['system', 'light', 'dark'] as const).map((option) => {
-            const active = (settings.theme ?? 'system') === option;
+
+        {/*
+          Swatches, not names.
+
+          A theme is a look, and no wording picks one as well as three squares of
+          the actual colours does — "Vaporwave" tells you almost nothing until
+          you have seen it. Each row previews its own canvas, surface and both
+          accents, painted in that theme's palette rather than the current one,
+          so the choice is made by looking rather than by trying each in turn.
+        */}
+        <View style={{ marginTop: sp.md }}>
+          {THEMES.map((seed) => {
+            const preview = PALETTE_BY_THEME[seed.id];
+            const active = (settings.theme ?? 'system') === seed.id;
             return (
               <Pressable
-                key={option}
-                onPress={() => setSetting('theme', option)}
-                accessibilityRole="button"
+                key={seed.id}
+                onPress={() => setSetting('theme', seed.id)}
+                accessibilityRole="radio"
+                aria-checked={active}
                 accessibilityState={{ selected: active }}
                 style={{
-                  flex: 1,
+                  flexDirection: 'row',
                   alignItems: 'center',
-                  paddingVertical: sp.md,
-                  marginRight: option === 'dark' ? 0 : sp.sm,
-                  borderRadius: r.md,
+                  padding: sp.md,
+                  marginBottom: sp.sm,
+                  borderRadius: r.lg,
                   backgroundColor: active ? c.accentSubtle : c.surfaceSunken,
                   borderWidth: StyleSheet.hairlineWidth,
                   borderColor: active ? c.accent : c.border,
                 }}
               >
-                <Text style={{ fontSize: 18 }}>
-                  {option === 'system' ? '⚙️' : option === 'light' ? '☀️' : '🌙'}
-                </Text>
-                <Text
-                  style={[
-                    t.caption,
-                    {
-                      color: active ? c.accent : c.textSecondary,
-                      marginTop: 4,
-                      textTransform: 'capitalize',
-                    },
-                  ]}
+                {/* The theme in miniature: ground, card, and its two voices. */}
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    borderRadius: r.sm,
+                    overflow: 'hidden',
+                    borderWidth: StyleSheet.hairlineWidth,
+                    borderColor: preview.border,
+                  }}
                 >
-                  {option}
-                </Text>
+                  {[preview.canvas, preview.surface, preview.accent, preview.feature.savings.bg].map(
+                    (swatch, i) => (
+                      <View key={i} style={{ width: 16, height: 32, backgroundColor: swatch }} />
+                    )
+                  )}
+                </View>
+
+                <View style={{ flex: 1, marginLeft: sp.md }}>
+                  <Text style={[t.body, { color: active ? c.accent : c.textPrimary }]}>
+                    {seed.name}
+                  </Text>
+                  <Text style={[t.micro, { color: c.textMuted, marginTop: 1 }]} numberOfLines={1}>
+                    {seed.blurb}
+                  </Text>
+                </View>
+
+                {active ? <Ionicons name="checkmark" size={18} color={c.accent} /> : null}
               </Pressable>
             );
           })}
+
+          {/* Last, because it is the deferral rather than a choice. */}
+          <Pressable
+            onPress={() => setSetting('theme', 'system')}
+            accessibilityRole="radio"
+            aria-checked={(settings.theme ?? 'system') === 'system'}
+            accessibilityState={{ selected: (settings.theme ?? 'system') === 'system' }}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              padding: sp.md,
+              borderRadius: r.lg,
+              backgroundColor:
+                (settings.theme ?? 'system') === 'system' ? c.accentSubtle : c.surfaceSunken,
+              borderWidth: StyleSheet.hairlineWidth,
+              borderColor: (settings.theme ?? 'system') === 'system' ? c.accent : c.border,
+            }}
+          >
+            <View style={{ width: 64, alignItems: 'center' }}>
+              <Text style={{ fontSize: 18 }}>⚙️</Text>
+            </View>
+            <View style={{ flex: 1, marginLeft: sp.md }}>
+              <Text
+                style={[
+                  t.body,
+                  {
+                    color:
+                      (settings.theme ?? 'system') === 'system' ? c.accent : c.textPrimary,
+                  },
+                ]}
+              >
+                Match my phone
+              </Text>
+              <Text style={[t.micro, { color: c.textMuted, marginTop: 1 }]}>
+                {themeSeed(SYSTEM_THEMES.dark).name} in dark,{' '}
+                {themeSeed(SYSTEM_THEMES.light).name} in light
+              </Text>
+            </View>
+            {(settings.theme ?? 'system') === 'system' ? (
+              <Ionicons name="checkmark" size={18} color={c.accent} />
+            ) : null}
+          </Pressable>
         </View>
+
         <Text style={[t.micro, { color: c.textMuted, marginTop: sp.md }]}>
-          System follows your phone. Pick one to override it.
+          A theme changes the whole app. Your data is untouched either way.
         </Text>
       </SettingsGroup>
 
