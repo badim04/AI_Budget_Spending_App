@@ -18,6 +18,7 @@ import {
 import { excludedCategoryIds } from '../../src/core/analytics';
 import { currencyMeta, formatMoney, parseMoney } from '../../src/core/money';
 import { formatDate, nowISO, today } from '../../src/core/dates';
+import { copyFor } from '../../src/core/copy';
 import { useAppStore } from '../../src/store/useAppStore';
 import { monthlyCommitment } from '../../src/core/recurring';
 
@@ -136,13 +137,12 @@ export default function BudgetsScreen() {
           <View style={{ alignItems: 'center', paddingVertical: sp.lg }}>
             <Spot name="target" size={112} tone="violet" />
             <Text style={[t.heading, { color: c.textPrimary, marginTop: sp.md }]}>
-              No budgets yet
+              {copyFor('noBudgets', today()).title}
             </Text>
             <Text
               style={[t.caption, { color: c.textMuted, marginTop: sp.xs, textAlign: 'center', maxWidth: 300 }]}
             >
-              Budgets are what turn a list of transactions into a plan. Load the demo data in
-              Settings to see how they work.
+              {copyFor('noBudgets', today()).body}
             </Text>
           </View>
         </Card>

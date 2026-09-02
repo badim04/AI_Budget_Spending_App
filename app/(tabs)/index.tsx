@@ -27,6 +27,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { useLayout } from '../../src/theme/layout';
+import type { GreetingMode } from '../../src/core/greeting';
 import { Split } from '../../src/components/ui/Screen';
 import { AmountText, BudgetBar, Card, Pill, SectionHeader } from '../../src/components/ui/Primitives';
 import { SpendTrendChart } from '../../src/components/charts/SpendTrendChart';
@@ -230,7 +231,10 @@ export default function DashboardScreen() {
           that out from a chart. */}
       <View style={{ marginBottom: sp.md }}>
         <Text style={[t.title, { color: c.textPrimary }]}>
-          {greeting(new Date(), settings.user_name)}
+          {greeting(new Date(), {
+            name: settings.user_name,
+            mode: (settings.greeting_language as GreetingMode) ?? 'en',
+          })}
         </Text>
         <Text style={[t.body, { color: c.textSecondary, marginTop: 2 }]}>
           Let’s see how your money is doing.

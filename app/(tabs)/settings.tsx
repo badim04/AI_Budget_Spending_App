@@ -24,6 +24,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { AppHeader } from '../../src/components/ui/AppHeader';
+import { GREETING_LANGUAGES, greeting } from '../../src/core/greeting';
 import { useLayout } from '../../src/theme/layout';
 import { Button } from '../../src/components/ui/Primitives';
 import { SettingsGroup, SettingsRow } from '../../src/components/ui/SettingsList';
@@ -672,6 +673,56 @@ export default function SettingsScreen() {
             marginTop: sp.sm,
           }}
         />
+
+        {/*
+          Greet me in my own language.
+
+          Nigeria is the market, and "Good morning" is not the only way anyone
+          here starts a sentence. Each option shows its own greeting rather than
+          just the language name, so the choice is made by reading it — nobody
+          should have to pick a language to find out what it will say.
+
+          "Mix it up" is last because it is the playful option, and a picker
+          whose first entry is the surprising one makes the ordinary choice feel
+          like the odd one.
+        */}
+        <Text style={[t.micro, { color: c.textMuted, marginTop: sp.xl }]}>GREETING</Text>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: sp.sm, marginTop: sp.md }}>
+          {[
+            ...GREETING_LANGUAGES,
+            { code: 'rotate' as const, label: 'Mix it up', sample: 'A different one each day' },
+          ].map((option) => {
+            const active = (settings.greeting_language ?? 'en') === option.code;
+            return (
+              <Pressable
+                key={option.code}
+                onPress={() => setSetting('greeting_language', option.code)}
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
+                style={{
+                  paddingHorizontal: sp.md,
+                  paddingVertical: sp.sm,
+                  borderRadius: r.md,
+                  backgroundColor: active ? c.accentSubtle : c.surfaceSunken,
+                  borderWidth: StyleSheet.hairlineWidth,
+                  borderColor: active ? c.accent : c.border,
+                }}
+              >
+                <Text style={[t.caption, { color: active ? c.accent : c.textPrimary }]}>
+                  {option.label}
+                </Text>
+                <Text style={[t.micro, { color: c.textMuted, marginTop: 2 }]}>{option.sample}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+        <Text style={[t.micro, { color: c.textMuted, marginTop: sp.md }]}>
+          Right now:{' '}
+          {greeting(new Date(), {
+            name: settings.user_name,
+            mode: (settings.greeting_language as never) ?? 'en',
+          })}
+        </Text>
 
         <Text style={[t.micro, { color: c.textMuted, marginTop: sp.xl }]}>THEME</Text>
         <View style={{ flexDirection: 'row', marginTop: sp.md }}>

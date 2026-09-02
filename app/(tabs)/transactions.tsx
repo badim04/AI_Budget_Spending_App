@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { AppHeader } from '../../src/components/ui/AppHeader';
+import { copyFor } from '../../src/core/copy';
 import { columnsFor, useLayout } from '../../src/theme/layout';
 import { useEnter, usePressScale } from '../../src/theme/motion';
 import { AmountText, Pill, Button } from '../../src/components/ui/Primitives';
@@ -643,8 +644,16 @@ export default function TransactionsScreen() {
           ListEmptyComponent={
             <View style={{ padding: sp.xxl, alignItems: 'center' }}>
               <Mascot pose="celebrate" size={104} />
-              <Text style={[t.body, { color: c.textMuted, marginTop: sp.md, textAlign: 'center' }]}>
-                {query ? 'Nothing matches that search.' : `Nothing to review in money ${direction}.`}
+              <Text style={[t.bodyStrong, { color: c.textPrimary, marginTop: sp.md }]}>
+                {copyFor(query ? 'noSearchMatch' : 'nothingToReview', today()).title}
+              </Text>
+              <Text
+                style={[
+                  t.caption,
+                  { color: c.textMuted, marginTop: 4, textAlign: 'center', maxWidth: 320 },
+                ]}
+              >
+                {copyFor(query ? 'noSearchMatch' : 'nothingToReview', today()).body}
               </Text>
             </View>
           }

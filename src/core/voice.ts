@@ -70,13 +70,15 @@ export function isEssential(categoryName: string): boolean {
   return ESSENTIAL.test(categoryName);
 }
 
-/** "Good afternoon, Hakeem 👋" */
-export function greeting(now: Date, name?: string): string {
-  const hour = now.getHours();
-  const part = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
-  const who = name?.trim() ? `, ${name.trim().split(/\s+/)[0]}` : '';
-  return `${part}${who} 👋`;
-}
+/**
+ * Greetings moved to `./greeting.ts`.
+ *
+ * This module turns money into sentences; that one turns a name and a clock
+ * into one, in five languages, and the two stopped having anything to do with
+ * each other. Re-exported so the rule that the app has one voice still reads
+ * true from here.
+ */
+export { greeting, firstName, properCase } from './greeting';
 
 /**
  * The line under the headline figure on Home.

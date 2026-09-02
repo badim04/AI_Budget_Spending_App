@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { AppHeader } from '../../src/components/ui/AppHeader';
+import { copyFor } from '../../src/core/copy';
 import { useLayout } from '../../src/theme/layout';
 import { Grid } from '../../src/components/ui/Screen';
 import { StatRow, StatTile } from '../../src/components/ui/Tiles';
@@ -118,10 +119,11 @@ export default function GoalsScreen() {
 
       {active.length === 0 && !composing ? (
         <Card style={{ marginTop: sp.xl }}>
-          <Text style={[t.heading, { color: c.textPrimary }]}>Nothing saved for yet</Text>
+          <Text style={[t.heading, { color: c.textPrimary }]}>
+            {copyFor('noGoals', asOf).title}
+          </Text>
           <Text style={[t.body, { color: c.textSecondary, marginTop: sp.xs }]}>
-            A goal is a target and a date. Finlo works out what you need to put aside each
-            month and tells you when you drift off the pace.
+            {copyFor('noGoals', asOf).body}
           </Text>
           <View style={{ marginTop: sp.lg }}>
             <Button label="Create a goal" onPress={() => setComposing(true)} />

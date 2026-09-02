@@ -20,6 +20,8 @@ import { describeHealth, financialHealth } from '../../src/core/health';
 import { challenges, describeChallenges } from '../../src/core/challenges';
 import { allBudgetStatuses } from '../../src/core/budget';
 import { today } from '../../src/core/dates';
+import { copyFor } from '../../src/core/copy';
+import { Mascot } from '../../src/components/art/Mascot';
 import { monthOf } from '../../src/core/periods';
 import { PeriodBar } from '../../src/components/ui/PeriodBar';
 import { Banner, SegmentedControl, StatRow, StatTile } from '../../src/components/ui/Tiles';
@@ -99,6 +101,9 @@ export default function InsightsScreen() {
     () => generateInsights(ctx, budgetStatuses),
     [ctx, budgetStatuses]
   );
+
+  /** Stable for the day — an empty state that rewords itself looks broken. */
+  const quiet = copyFor('nothingStandsOut', asOf);
 
   /**
    * Challenges are scored off the ledger, never off a stored streak.
@@ -240,16 +245,43 @@ export default function InsightsScreen() {
         is specific, actionable and true, and anything vague is deliberately
         absent rather than padded in.
       */}
+      <SectionHeader title="What stands out" />
       {insights.length > 0 ? (
-        <>
-          <SectionHeader title="What stands out" />
-          <Grid ideal={3} phoneMin={1}>
-            {insights.slice(0, 6).map((insight) => (
-              <InsightCard key={insight.id} insight={insight} />
-            ))}
-          </Grid>
-        </>
-      ) : null}
+        <Grid ideal={3} phoneMin={1}>
+          {insights.slice(0, 6).map((insight) => (
+            <InsightCard key={insight.id} insight={insight} />
+          ))}
+        </Grid>
+      ) : (
+        /*
+          A quiet month is a result, not an absence.
+
+          The section used to vanish when `generateInsights` found nothing,
+          which is the correct instinct — filler teaches people to skip an app's
+          messages — applied one step too far. Disappearing leaves the reader
+          unable to tell "nothing happened" from "this feature is broken", and
+          on the screen whose whole job is to notice things, that is the worse
+          of the two. So it says which one it is, in a line carrying no figure:
+          see `core/copy.ts` for why personality is free here and expensive in
+          `core/voice.ts`.
+        */
+        <Card>
+          <View style={{ alignItems: 'center', paddingVertical: sp.md }}>
+            <Mascot pose="rest" size={72} />
+            <Text style={[t.bodyStrong, { color: c.textPrimary, marginTop: sp.md }]}>
+              {quiet.title}
+            </Text>
+            <Text
+              style={[
+                t.caption,
+                { color: c.textMuted, marginTop: 4, textAlign: 'center', maxWidth: 340 },
+              ]}
+            >
+              {quiet.body}
+            </Text>
+          </View>
+        </Card>
+      )}
 
       {/*
         Challenges: the one part of this screen you can act on today.

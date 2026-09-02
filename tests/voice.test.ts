@@ -17,22 +17,17 @@ const NGN = 'NGN';
 const nudge = (name: string, current: number, previous: number, icon = '🍔') =>
   categoryNudge({ categoryName: name, icon, currentMinor: current, previousMinor: previous }, NGN);
 
+/**
+ * Greetings live in `core/greeting` now and are covered by
+ * `tests/greeting.test.ts`. What is checked here is only that `voice` still
+ * speaks for the whole app — the module's own claim is that there is one voice,
+ * and an import that quietly stopped resolving would make that false.
+ */
 describe('greeting', () => {
-  it('follows the clock', () => {
-    expect(greeting(new Date('2026-08-26T08:00:00'))).toContain('Good morning');
-    expect(greeting(new Date('2026-08-26T14:00:00'))).toContain('Good afternoon');
-    expect(greeting(new Date('2026-08-26T20:00:00'))).toContain('Good evening');
-  });
-
-  it('uses a first name and nothing else', () => {
-    expect(greeting(new Date('2026-08-26T14:00:00'), 'Abdulakeem Oladimeji')).toBe(
-      'Good afternoon, Abdulakeem 👋'
-    );
-  });
-
-  it('stays natural with no name at all', () => {
-    expect(greeting(new Date('2026-08-26T14:00:00'))).toBe('Good afternoon 👋');
-    expect(greeting(new Date('2026-08-26T14:00:00'), '   ')).toBe('Good afternoon 👋');
+  it('is still reachable through the voice module', () => {
+    const line = greeting(new Date('2026-08-26T14:00:00'), 'Abdulakeem Oladimeji');
+    expect(line).toContain('Abdulakeem');
+    expect(line).toContain('👋');
   });
 });
 
