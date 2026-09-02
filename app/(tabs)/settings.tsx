@@ -24,7 +24,15 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { AppHeader } from '../../src/components/ui/AppHeader';
-import { GREETING_LANGUAGES, greeting } from '../../src/core/greeting';
+import {
+  ALL_LANGUAGES,
+  GREETING_LANGUAGES,
+  greeting,
+  parseMix,
+  serialiseMix,
+  type GreetingLanguage,
+  type MixPace,
+} from '../../src/core/greeting';
 import { useLayout } from '../../src/theme/layout';
 import { Button } from '../../src/components/ui/Primitives';
 import { SettingsGroup, SettingsRow } from '../../src/components/ui/SettingsList';
@@ -690,7 +698,7 @@ export default function SettingsScreen() {
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: sp.sm, marginTop: sp.md }}>
           {[
             ...GREETING_LANGUAGES,
-            { code: 'rotate' as const, label: 'Mix it up', sample: 'A different one each day' },
+            { code: 'rotate' as const, label: 'Mix it up', sample: 'Several, your pick' },
           ].map((option) => {
             const active = (settings.greeting_language ?? 'en') === option.code;
             return (
@@ -716,11 +724,141 @@ export default function SettingsScreen() {
             );
           })}
         </View>
+
+        {/*
+          The mix is only configurable once it is chosen.
+
+          Twelve tick boxes and a pace switch shown to someone who picked
+          "English" would be a screenful of controls that do nothing — the same
+          lesson this page already learned when eight currency chips sat at the
+          top of it for a preference most people set once.
+        */}
+        {settings.greeting_language === 'rotate' ? (
+          <View
+            style={{
+              marginTop: sp.md,
+              padding: sp.md,
+              borderRadius: r.lg,
+              backgroundColor: c.surfaceSunken,
+              borderWidth: StyleSheet.hairlineWidth,
+              borderColor: c.border,
+            }}
+          >
+            <Text style={[t.micro, { color: c.textMuted }]}>MIX THESE</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: sp.sm, marginTop: sp.sm }}>
+              {GREETING_LANGUAGES.map((option) => {
+                const chosen = parseMix(settings.greeting_mix);
+                // Nothing ticked means all of them, so that is what is shown.
+                const on = chosen.length === 0 || chosen.includes(option.code);
+                return (
+                  <Pressable
+                    key={option.code}
+                    onPress={() => {
+                      const current: GreetingLanguage[] =
+                        chosen.length === 0 ? [...ALL_LANGUAGES] : chosen;
+                      const next = on
+                        ? current.filter((code) => code !== option.code)
+                        : [...current, option.code];
+                      /*
+                        Never let the last one be unticked.
+
+                        An empty mix means "all of them" to `languageFor`, so
+                        clearing the final box would silently switch every
+                        language back on — the exact opposite of what the tap
+                        asked for. Refusing the tap is honest; doing the reverse
+                        is not.
+                      */
+                      if (next.length === 0) return;
+                      setSetting('greeting_mix', serialiseMix(next));
+                    }}
+                    accessibilityRole="checkbox"
+                    /*
+                      Both forms, deliberately.
+
+                      react-native-web does not render `accessibilityState` on a
+                      View with role="checkbox" — the DOM came out with no
+                      `aria-checked` at all, so a screen reader could see twelve
+                      checkboxes and not which were ticked. `aria-checked` is
+                      the prop RN forwards, and `accessibilityState` is what
+                      native reads.
+                    */
+                    aria-checked={on}
+                    accessibilityState={{ checked: on }}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      paddingHorizontal: sp.md,
+                      paddingVertical: 6,
+                      borderRadius: r.pill,
+                      backgroundColor: on ? c.accentSubtle : c.surface,
+                      borderWidth: StyleSheet.hairlineWidth,
+                      borderColor: on ? c.accent : c.border,
+                    }}
+                  >
+                    <Ionicons
+                      name={on ? 'checkmark-circle' : 'ellipse-outline'}
+                      size={13}
+                      color={on ? c.accent : c.textMuted}
+                    />
+                    <Text
+                      style={[t.caption, { color: on ? c.accent : c.textSecondary, marginLeft: 5 }]}
+                    >
+                      {option.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            <Text style={[t.micro, { color: c.textMuted, marginTop: sp.lg }]}>CHANGE IT</Text>
+            <View style={{ flexDirection: 'row', gap: sp.sm, marginTop: sp.sm }}>
+              {(
+                [
+                  { value: 'daily', label: 'Once a day', hint: 'One language until midnight' },
+                  {
+                    value: 'slot',
+                    label: 'Through the day',
+                    hint: 'A new one each part of the day',
+                  },
+                ] as Array<{ value: MixPace; label: string; hint: string }>
+              ).map((option) => {
+                const active = (settings.greeting_mix_pace ?? 'daily') === option.value;
+                return (
+                  <Pressable
+                    key={option.value}
+                    onPress={() => setSetting('greeting_mix_pace', option.value)}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                    style={{
+                      flex: 1,
+                      paddingHorizontal: sp.md,
+                      paddingVertical: sp.sm,
+                      borderRadius: r.md,
+                      backgroundColor: active ? c.accentSubtle : c.surface,
+                      borderWidth: StyleSheet.hairlineWidth,
+                      borderColor: active ? c.accent : c.border,
+                    }}
+                  >
+                    <Text style={[t.caption, { color: active ? c.accent : c.textPrimary }]}>
+                      {option.label}
+                    </Text>
+                    <Text style={[t.micro, { color: c.textMuted, marginTop: 2 }]}>
+                      {option.hint}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        ) : null}
+
         <Text style={[t.micro, { color: c.textMuted, marginTop: sp.md }]}>
           Right now:{' '}
           {greeting(new Date(), {
             name: settings.user_name,
             mode: (settings.greeting_language as never) ?? 'en',
+            mix: parseMix(settings.greeting_mix),
+            pace: (settings.greeting_mix_pace as MixPace) ?? 'daily',
           })}
         </Text>
 

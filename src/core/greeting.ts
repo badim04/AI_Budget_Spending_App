@@ -30,9 +30,26 @@
  * Pure: no React, no I/O, no clock except what is passed in.
  */
 
-export type GreetingLanguage = 'en' | 'pcm' | 'yo' | 'ig' | 'ha';
+export type GreetingLanguage =
+  // Home: the owner, the testers, the market.
+  | 'en'
+  | 'pcm'
+  | 'yo'
+  | 'ig'
+  | 'ha'
+  // Everywhere else.
+  | 'fr'
+  | 'es'
+  | 'it'
+  | 'ja'
+  | 'ko'
+  | 'zh'
+  | 'ar';
 
-/** What the picker offers. `rotate` moves through the languages by the day. */
+/** How often a mix changes language. */
+export type MixPace = 'daily' | 'slot';
+
+/** What the picker offers. `rotate` moves through a chosen set of languages. */
 export type GreetingMode = GreetingLanguage | 'rotate';
 
 export const GREETING_LANGUAGES: Array<{
@@ -40,13 +57,31 @@ export const GREETING_LANGUAGES: Array<{
   label: string;
   /** Shown in the picker so the choice can be made by reading, not guessing. */
   sample: string;
+  /**
+   * Right-to-left script.
+   *
+   * Only Arabic here, and it matters: the greeting is RTL and the name after it
+   * is Latin, so without an isolate the comma and the emoji end up on the wrong
+   * side of the line. See `greeting` for the fix.
+   */
+  rtl?: boolean;
 }> = [
   { code: 'en', label: 'English', sample: 'Good morning' },
   { code: 'pcm', label: 'Pidgin', sample: 'Morning o' },
   { code: 'yo', label: 'Yorùbá', sample: 'Ẹ káàárọ̀' },
   { code: 'ig', label: 'Igbo', sample: 'Ụtụtụ ọma' },
   { code: 'ha', label: 'Hausa', sample: 'Barka da safe' },
+  { code: 'fr', label: 'Français', sample: 'Bonjour' },
+  { code: 'es', label: 'Español', sample: 'Buenos días' },
+  { code: 'it', label: 'Italiano', sample: 'Buongiorno' },
+  { code: 'ja', label: '日本語', sample: 'おはようございます' },
+  { code: 'ko', label: '한국어', sample: '좋은 아침이에요' },
+  { code: 'zh', label: '中文', sample: '早上好' },
+  { code: 'ar', label: 'العربية', sample: 'صباح الخير', rtl: true },
 ];
+
+/** Codes only, for defaults and validation. */
+export const ALL_LANGUAGES: GreetingLanguage[] = GREETING_LANGUAGES.map((l) => l.code);
 
 /**
  * Five slices, not three.
@@ -114,6 +149,60 @@ const LINES: Record<GreetingLanguage, Record<Slot, string[]>> = {
     evening: ['Barka da yamma'],
     night: ['Barka da dare'],
   },
+  fr: {
+    earlyMorning: ['Bonjour'],
+    morning: ['Bonjour'],
+    afternoon: ['Bon après-midi', 'Bonjour'],
+    evening: ['Bonsoir'],
+    // "Bonne nuit" is a goodbye, not a hello. Bonsoir holds all evening.
+    night: ['Bonsoir'],
+  },
+  es: {
+    earlyMorning: ['Buenos días'],
+    morning: ['Buenos días'],
+    afternoon: ['Buenas tardes'],
+    // Spanish moves to "noches" in the evening; there is no separate night form.
+    evening: ['Buenas noches'],
+    night: ['Buenas noches'],
+  },
+  it: {
+    earlyMorning: ['Buongiorno'],
+    morning: ['Buongiorno'],
+    afternoon: ['Buon pomeriggio', 'Buongiorno'],
+    evening: ['Buonasera'],
+    // "Buonanotte" is a goodbye. Buonasera is the greeting.
+    night: ['Buonasera'],
+  },
+  ja: {
+    // Polite forms throughout: the casual ones would be odd from an app.
+    earlyMorning: ['おはようございます'],
+    morning: ['おはようございます'],
+    afternoon: ['こんにちは'],
+    evening: ['こんばんは'],
+    night: ['こんばんは'],
+  },
+  ko: {
+    earlyMorning: ['좋은 아침이에요'],
+    morning: ['좋은 아침이에요', '안녕하세요'],
+    afternoon: ['안녕하세요'],
+    evening: ['좋은 저녁이에요', '안녕하세요'],
+    night: ['안녕하세요'],
+  },
+  zh: {
+    earlyMorning: ['早上好'],
+    morning: ['早上好'],
+    afternoon: ['下午好'],
+    evening: ['晚上好'],
+    night: ['晚上好'],
+  },
+  ar: {
+    // Arabic has a morning form and an afternoon/evening form, and no third.
+    earlyMorning: ['صباح الخير'],
+    morning: ['صباح الخير'],
+    afternoon: ['مساء الخير'],
+    evening: ['مساء الخير'],
+    night: ['مساء الخير'],
+  },
 };
 
 /** A small, stable hash. Same input, same number, on every device. */
@@ -176,8 +265,69 @@ export function firstName(name?: string): string {
 export interface GreetingOptions {
   name?: string;
   mode?: GreetingMode;
+  /**
+   * Which languages `rotate` moves through.
+   *
+   * Empty or absent means all of them. Someone who wants English, Pidgin and
+   * Yorùbá and nothing else says so here — a mix that always included twelve
+   * languages would be a novelty rather than a setting.
+   */
+  mix?: readonly GreetingLanguage[];
+  /** `daily` changes at midnight; `slot` changes as the day moves. */
+  pace?: MixPace;
   /** Overrides the day used for the stable pick. Defaults to `now`. */
   today?: string;
+}
+
+/**
+ * Keep the greeting and the Latin name from fighting over the line.
+ *
+ * "صباح الخير, Adebayo 👋" is right-to-left text followed by left-to-right
+ * text, and the Unicode bidi algorithm resolves the trailing comma and emoji
+ * against the *paragraph* direction — so on an RTL greeting they jump to the
+ * far side and the line reads as gibberish. Wrapping the Latin run in a
+ * first-strong isolate (U+2068 … U+2069) tells the algorithm to resolve that
+ * span on its own, which is exactly what it is for.
+ *
+ * Two invisible characters, and the alternative is a language that renders
+ * wrong for everyone who reads it.
+ */
+const ISOLATE_START = '\u2068';
+const ISOLATE_END = '\u2069';
+
+function isolate(text: string): string {
+  return `${ISOLATE_START}${text}${ISOLATE_END}`;
+}
+
+export function isRtl(language: GreetingLanguage): boolean {
+  return GREETING_LANGUAGES.find((l) => l.code === language)?.rtl === true;
+}
+
+/**
+ * Resolve which language to greet in.
+ *
+ * Exported because the pick is the interesting part and deserves its own tests
+ * — `greeting` only formats what this decides.
+ */
+export function languageFor(options: GreetingOptions, slot: Slot, day: string): GreetingLanguage {
+  const mode = options.mode ?? 'en';
+  if (mode !== 'rotate') return mode;
+
+  /*
+    A one-language mix is not a mix.
+
+    Someone can tick a single box, and the honest response is to use it every
+    time rather than pretend to rotate. Filtering to known codes as well, so a
+    stale setting from an older build cannot select a language that no longer
+    exists and fall through to an empty list.
+  */
+  const chosen = (options.mix ?? []).filter((code) => ALL_LANGUAGES.includes(code));
+  const pool = chosen.length > 0 ? chosen : ALL_LANGUAGES;
+  if (pool.length === 1) return pool[0];
+
+  // `slot` pace re-picks as the day moves; `daily` holds until midnight.
+  const seed = (options.pace ?? 'daily') === 'slot' ? `${day}|${slot}` : day;
+  return pool[seedOf(seed) % pool.length];
 }
 
 /**
@@ -192,20 +342,31 @@ export function greeting(now: Date, nameOrOptions?: string | GreetingOptions): s
 
   const slot = slotFor(now.getHours());
   const day =
-    options.today ??
-    `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
+    options.today ?? `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
 
-  const mode: GreetingMode = options.mode ?? 'en';
-  const language: GreetingLanguage =
-    mode === 'rotate'
-      ? GREETING_LANGUAGES[seedOf(day) % GREETING_LANGUAGES.length].code
-      : mode;
-
+  const language = languageFor(options, slot, day);
   const lines = LINES[language]?.[slot] ?? LINES.en[slot];
   // Seeded on day *and* slot, so morning and evening are not forced to the
   // same index and the whole day does not read as one repeated phrase.
-  const line = lines[seedOf(`${day}|${slot}`) % lines.length];
+  const line = lines[seedOf(`${day}|${slot}|${language}`) % lines.length];
 
   const who = firstName(options.name);
-  return `${line}${who ? `, ${who}` : ''} 👋`;
+  if (!who) return `${line} 👋`;
+
+  return isRtl(language)
+    ? `${line}، ${isolate(who)} 👋`
+    : `${line}, ${who} 👋`;
+}
+
+/** Parse the stored comma-separated mix, dropping anything unrecognised. */
+export function parseMix(raw?: string): GreetingLanguage[] {
+  if (!raw) return [];
+  return raw
+    .split(',')
+    .map((code) => code.trim() as GreetingLanguage)
+    .filter((code) => ALL_LANGUAGES.includes(code));
+}
+
+export function serialiseMix(mix: readonly GreetingLanguage[]): string {
+  return mix.join(',');
 }

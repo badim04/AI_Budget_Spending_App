@@ -27,7 +27,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { useLayout } from '../../src/theme/layout';
-import type { GreetingMode } from '../../src/core/greeting';
+import { parseMix, type GreetingMode, type MixPace } from '../../src/core/greeting';
 import { Split } from '../../src/components/ui/Screen';
 import { AmountText, BudgetBar, Card, Pill, SectionHeader } from '../../src/components/ui/Primitives';
 import { SpendTrendChart } from '../../src/components/charts/SpendTrendChart';
@@ -234,6 +234,8 @@ export default function DashboardScreen() {
           {greeting(new Date(), {
             name: settings.user_name,
             mode: (settings.greeting_language as GreetingMode) ?? 'en',
+            mix: parseMix(settings.greeting_mix),
+            pace: (settings.greeting_mix_pace as MixPace) ?? 'daily',
           })}
         </Text>
         <Text style={[t.body, { color: c.textSecondary, marginTop: 2 }]}>

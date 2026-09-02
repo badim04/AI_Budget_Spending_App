@@ -13,10 +13,15 @@
 
 import { describe, it, expect } from 'vitest';
 import {
+  ALL_LANGUAGES,
   GREETING_LANGUAGES,
   firstName,
   greeting,
+  isRtl,
+  languageFor,
+  parseMix,
   properCase,
+  serialiseMix,
   slotFor,
   type GreetingLanguage,
 } from '@/core/greeting';
@@ -155,10 +160,21 @@ describe('greeting', () => {
       expect(seen.size).toBeGreaterThanOrEqual(3);
     });
 
+    it('offers the twelve it claims to', () => {
+      expect(ALL_LANGUAGES).toHaveLength(12);
+      expect(new Set(ALL_LANGUAGES).size).toBe(ALL_LANGUAGES.length);
+      for (const code of ['en', 'pcm', 'yo', 'ig', 'ha', 'fr', 'es', 'it', 'ja', 'ko', 'zh', 'ar']) {
+        expect(ALL_LANGUAGES).toContain(code as GreetingLanguage);
+      }
+    });
+
     it('offers a readable sample for each, so the picker can be read not guessed', () => {
       for (const language of GREETING_LANGUAGES) {
-        expect(language.label.length).toBeGreaterThan(2);
-        expect(language.sample.length).toBeGreaterThan(2);
+        // "中文" is two characters and perfectly readable; an assertion tuned to
+        // Latin word lengths is the wrong test once the list stops being Latin.
+        expect(language.label.length, language.code).toBeGreaterThanOrEqual(2);
+        expect(language.sample.length, language.code).toBeGreaterThanOrEqual(2);
+        expect(language.sample.trim(), language.code).toBe(language.sample);
       }
     });
   });
@@ -173,5 +189,113 @@ describe('greeting', () => {
         expect(line, `${language.code}@${hour}`).not.toMatch(/[.!?],/);
       }
     }
+  });
+});
+
+describe('a chosen mix', () => {
+  const MIX: GreetingLanguage[] = ['en', 'pcm', 'yo'];
+
+  it('only ever uses the languages that were ticked', () => {
+    const seen = new Set<GreetingLanguage>();
+    for (let day = 1; day <= 40; day++) {
+      const iso = `2026-09-${String(((day - 1) % 30) + 1).padStart(2, '0')}`;
+      for (const hour of [6, 10, 14, 19, 23]) {
+        seen.add(languageFor({ mode: 'rotate', mix: MIX, pace: 'slot' }, slotFor(hour), iso));
+      }
+    }
+    for (const code of seen) expect(MIX).toContain(code);
+    expect(seen.size).toBeGreaterThan(1);
+  });
+
+  /** Ticking one box is a choice, not a rotation to fake. */
+  it('uses a single ticked language every time', () => {
+    for (const hour of [6, 14, 23]) {
+      const at = AT('2026-08-31T00:00:00');
+      at.setHours(hour);
+      expect(greeting(at, { mode: 'rotate', mix: ['ja'] })).toMatch(/[ぁ-んァ-ン一-龯]/);
+    }
+  });
+
+  it('falls back to every language when nothing is ticked', () => {
+    const seen = new Set<GreetingLanguage>();
+    for (let day = 1; day <= 28; day++) {
+      seen.add(languageFor({ mode: 'rotate', mix: [] }, 'morning', `2026-09-${day}`));
+    }
+    expect(seen.size).toBeGreaterThan(3);
+  });
+
+  /**
+   * A setting written by an older build must not select a language that no
+   * longer exists and leave the pool empty.
+   */
+  it('ignores codes it does not recognise', () => {
+    expect(parseMix('en,klingon,yo')).toEqual(['en', 'yo']);
+    expect(parseMix('')).toEqual([]);
+    expect(parseMix(undefined)).toEqual([]);
+    expect(serialiseMix(['en', 'ar'])).toBe('en,ar');
+
+    const only = languageFor({ mode: 'rotate', mix: ['nope' as GreetingLanguage] }, 'morning', '2026-09-01');
+    expect(ALL_LANGUAGES).toContain(only);
+  });
+
+  describe('pace', () => {
+    const DAY = '2026-09-03';
+
+    it('daily holds the same language all day', () => {
+      const slots = (['earlyMorning', 'morning', 'afternoon', 'evening', 'night'] as const).map(
+        (slot) => languageFor({ mode: 'rotate', mix: MIX, pace: 'daily' }, slot, DAY)
+      );
+      expect(new Set(slots).size).toBe(1);
+    });
+
+    it('slot changes it as the day moves', () => {
+      const seen = new Set<GreetingLanguage>();
+      for (let day = 1; day <= 10; day++) {
+        const iso = `2026-09-${String(day).padStart(2, '0')}`;
+        for (const slot of ['morning', 'afternoon', 'evening'] as const) {
+          seen.add(languageFor({ mode: 'rotate', mix: MIX, pace: 'slot' }, slot, iso));
+        }
+      }
+      expect(seen.size).toBeGreaterThan(1);
+    });
+
+    it('is still stable within one slot on one day', () => {
+      const at = AT('2026-09-03T10:00:00');
+      const first = greeting(at, { mode: 'rotate', mix: MIX, pace: 'slot', name: 'Adebayo' });
+      for (let i = 0; i < 20; i++) {
+        expect(greeting(at, { mode: 'rotate', mix: MIX, pace: 'slot', name: 'Adebayo' })).toBe(first);
+      }
+    });
+  });
+});
+
+describe('right-to-left', () => {
+  it('knows which language needs it', () => {
+    expect(isRtl('ar')).toBe(true);
+    expect(isRtl('en')).toBe(false);
+    expect(isRtl('ja')).toBe(false);
+  });
+
+  /**
+   * Without an isolate the bidi algorithm resolves the trailing comma and emoji
+   * against the paragraph direction, and they jump to the far side of the line.
+   */
+  it('isolates a Latin name inside an Arabic greeting', () => {
+    const line = greeting(AT('2026-08-31T09:00:00'), { mode: 'ar', name: 'Adebayo' });
+    expect(line).toContain('\u2068Adebayo\u2069');
+    // Arabic comma, not the Latin one.
+    expect(line).toContain('\u060c');
+    expect(line).not.toContain(', ');
+  });
+
+  it('adds no isolate when there is no name to isolate', () => {
+    const line = greeting(AT('2026-08-31T09:00:00'), { mode: 'ar' });
+    expect(line).not.toContain('\u2068');
+  });
+
+  it('leaves left-to-right languages untouched', () => {
+    const line = greeting(AT('2026-08-31T09:00:00'), { mode: 'fr', name: 'Adebayo' });
+    expect(line).not.toContain('\u2068');
+    expect(line).toContain(', Adebayo');
   });
 });
