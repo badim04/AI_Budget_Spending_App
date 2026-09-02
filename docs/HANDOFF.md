@@ -11,7 +11,7 @@ updated 2026-08-26 (statement import correctness, review UX).
 codebase. Expo SDK 52 + React Native 0.76 + TypeScript, expo-router.
 
 - **Project:** `C:\Users\user\Documents\GitHub\AI Budget Spending App`
-- **Package:** `com.badim04.finlo` · **version** 0.1.1 · **versionCode** 2
+- **Package:** `com.badim04.finlo` · **version** 1.2.0 · **versionCode** 3
 - **Expo:** owner `badim04s-team`, slug `budgetspenderappfinlo`,
   projectId `240fc2a2-71ba-4e64-b2b8-29efd995522d`
 - **Git:** remote is `github.com/badim04/AI_Budget_Spending_App`. **Nothing is pushed yet** — every commit below is local.
@@ -44,7 +44,20 @@ APK link, including strangers.
 1. **Metro caches aggressively.** When behaviour does not match the code,
    restart with `npm start -- --clear` *before* debugging. This sent a whole
    session chasing a bug that was already fixed.
-2. **A new native module means a new APK, and `--clear` first.**
+2. **Bumping `version` cuts off every phone running the old one.**
+   `runtimeVersion.policy` is `appVersion`, so the OTA runtime *is* the version
+   string. Changing `version` from 0.1.1 to 1.2.0 means an `eas update` now
+   targets runtime `1.2.0`, and a handset still carrying the 0.1.1 binary will
+   never be offered it — silently, because there is no error for "no update
+   matches your runtime". After any version bump the next release has to be an
+   APK; OTA resumes once that build is installed.
+
+   The reverse bit someone too: v1.2's whole feature set shipped inside a binary
+   still reporting **0.1.1** in Settings, because `app.json` had not been
+   touched. The app was right and the number was wrong, which reads exactly like
+   a failed build.
+
+3. **A new native module means a new APK, and `--clear` first.**
    `expo-linear-gradient` was added in v1.2. Installing it left Metro's dev
    cache stale, and every route 500'd with
    `Cannot read properties of undefined (reading 'get')` — a bundler error that

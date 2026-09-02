@@ -2,7 +2,7 @@
   "expo": {
     "name": "Finlo",
     "slug": "budgetspenderappfinlo",
-    "version": "0.1.1",
+    "version": "1.2.0",
     "orientation": "portrait",
     "scheme": [
       "finlo",
@@ -30,7 +30,7 @@
     },
     "android": {
       "package": "com.badim04.finlo",
-      "versionCode": 2,
+      "versionCode": 3,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0b0d12"
