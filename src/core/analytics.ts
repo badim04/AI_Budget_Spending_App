@@ -445,10 +445,20 @@ export function runwayMonths(ctx: AnalyticsContext, lookbackMonths = 6): number 
  */
 export function generateInsights(
   ctx: AnalyticsContext,
-  budgetStatuses: BudgetStatus[]
+  budgetStatuses: BudgetStatus[],
+  period?: PeriodRange
 ): Insight[] {
   const out: Insight[] = [];
-  const thisMonth = periodRange(ctx.asOf, 'monthly');
+  /**
+   * The period being read, not always "now".
+   *
+   * The dashboard time-travels by moving `asOf`, so it leaves this unset and
+   * gets the month around whatever date it asked for. The Insights tab has a
+   * period selector of its own and passes it here, so paging back actually
+   * changes what stands out — before this it changed only the savings-rate
+   * tile, and a control that moves one number out of six reads as broken.
+   */
+  const thisMonth = period ?? periodRange(ctx.asOf, 'monthly');
 
   // 1. Overspent envelopes — the most actionable thing on the screen.
   for (const s of budgetStatuses.filter((b) => b.state === 'over')) {

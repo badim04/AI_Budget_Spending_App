@@ -29,13 +29,24 @@
  * Deploy: see README.md in this folder. Free tier, no card, ~3 minutes.
  */
 
-const GEMINI_MODEL = 'gemini-2.0-flash';
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+/**
+ * Default model, overridable per-deployment with the GEMINI_MODEL env var and
+ * with no code change — because Google retires these on their own schedule.
+ * This was pinned to `gemini-2.0-flash`, which was retired, so every request
+ * 404'd server-side with nothing on the phone to show for it. A name in one
+ * place, changeable from `wrangler.toml`, is the fix.
+ */
+const DEFAULT_MODEL = 'gemini-3.6-flash';
+const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
+function geminiUrl(model) {
+  return `${GEMINI_BASE}/${model}:generateContent`;
+}
 
 /** Hard caps. A single request should never be able to cost much. */
 const MAX_DESCRIPTORS = 60;
 const MAX_CATEGORIES = 80;
 const MAX_DESCRIPTOR_CHARS = 200;
+const MAX_PROMPT_CHARS = 24000;
 const MAX_BODY_BYTES = 64 * 1024;
 
 /** Per-IP budget. Generous for a real user, useless for a scraper. */
@@ -83,6 +94,31 @@ export default {
       return json({ error: 'Invalid JSON' }, 400, env);
     }
 
+    const model = env.GEMINI_MODEL || DEFAULT_MODEL;
+
+    /**
+     * Free-text path: Ask Finlo and the month summary build a fully-formed,
+     * guard-railed prompt on the app side (see `core/factSheet` and
+     * `ingest/ask`) and just need it relayed. Serving it here means the same
+     * key, token, rate limit and kill switch cover every AI feature — not only
+     * categorisation, which is all this proxy used to do. Without it, Ask
+     * through the proxy sent `{prompt}`, matched no `descriptors`, and got an
+     * empty array back: the feature looked broken and no error said why.
+     */
+    const prompt =
+      typeof payload?.prompt === 'string' ? payload.prompt.slice(0, MAX_PROMPT_CHARS) : '';
+    if (prompt) {
+      try {
+        const text = await callPrompt(env.GEMINI_API_KEY, model, prompt, payload?.kind);
+        return new Response(text, {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(env) },
+        });
+      } catch (e) {
+        return json({ error: String(e?.message ?? e) }, 502, env);
+      }
+    }
+
     const descriptors = sanitiseDescriptors(payload?.descriptors);
     const categories = sanitiseCategories(payload?.categories);
 
@@ -92,7 +128,7 @@ export default {
     }
 
     try {
-      const text = await callGemini(env.GEMINI_API_KEY, descriptors, categories);
+      const text = await callGemini(env.GEMINI_API_KEY, model, descriptors, categories);
       // Pass the model's text straight through. The app already parses
       // defensively (fences, prose, invented ids), so re-parsing here would
       // duplicate that logic and give it a second place to drift.
@@ -146,7 +182,33 @@ async function checkRateLimit(env, ip) {
   return false;
 }
 
-async function callGemini(apiKey, descriptors, categories) {
+/**
+ * Relay a ready-made prompt (Ask, month summary) and return the model's text.
+ *
+ * The app owns the prompt and its guardrails — this only carries it. Output is
+ * capped by `kind` so a summary can't run long and a chat answer stays an
+ * answer. Temperature is low but not zero: the figures in these prompts are
+ * fixed by the app, only the wording varies.
+ */
+async function callPrompt(apiKey, model, prompt, kind) {
+  const maxOutputTokens = kind === 'summary' ? 400 : 800;
+  const res = await fetch(`${geminiUrl(model)}?key=${encodeURIComponent(apiKey)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { temperature: 0.2, maxOutputTokens },
+    }),
+  });
+  if (!res.ok) {
+    // Never echo the upstream body — it can carry the key in an error URL.
+    throw new Error(`Upstream ${res.status}`);
+  }
+  const data = await res.json();
+  return data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+}
+
+async function callGemini(apiKey, model, descriptors, categories) {
   const list = categories.map((c) => `${c.id}\t${c.name}\t${c.kind}`).join('\n');
   const prompt = [
     'You categorise bank transaction descriptors for a personal finance app.',
@@ -165,7 +227,7 @@ async function callGemini(apiKey, descriptors, categories) {
     ...descriptors.map((d, i) => `${i + 1}. ${d}`),
   ].join('\n');
 
-  const res = await fetch(`${GEMINI_URL}?key=${encodeURIComponent(apiKey)}`, {
+  const res = await fetch(`${geminiUrl(model)}?key=${encodeURIComponent(apiKey)}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({

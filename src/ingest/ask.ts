@@ -24,12 +24,8 @@
  */
 
 import type { Category } from '../core/types';
-
-const PROXY_URL = process.env.EXPO_PUBLIC_LLM_PROXY_URL ?? '';
-const GEMINI_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY ?? '';
-const PROXY_TOKEN = process.env.EXPO_PUBLIC_LLM_PROXY_TOKEN ?? '';
-const MODEL = process.env.EXPO_PUBLIC_GEMINI_MODEL || 'gemini-3.6-flash';
-const GEMINI_API = 'https://generativelanguage.googleapis.com/v1beta';
+import { aiEnabled } from './aiToggle';
+import { generateText, textTransport } from './llmText';
 
 /** Long enough for a real answer, short enough that it stays an answer. */
 const MAX_OUTPUT_TOKENS = 700;
@@ -107,8 +103,14 @@ export function buildAskPrompt(
     .join('\n');
 }
 
+/** A transport exists (proxy or key), regardless of the user's AI switch. */
+export function askHasTransport(): boolean {
+  return textTransport() !== 'none';
+}
+
+/** A transport exists AND the user has AI switched on — i.e. a call will happen. */
 export function askConfigured(): boolean {
-  return Boolean(PROXY_URL || GEMINI_KEY);
+  return aiEnabled() && askHasTransport();
 }
 
 /**
@@ -137,18 +139,22 @@ export async function askAboutMoney(
     return {
       ok: false,
       answer: '',
-      error: 'No AI is configured. Add a key in Settings, or deploy the proxy.',
+      error: askHasTransport()
+        ? 'AI is switched off in Settings. Turn it on to ask.'
+        : 'No AI is configured. Add a key in Settings, or deploy the proxy.',
     };
   }
 
   const prompt = buildAskPrompt(trimmed, factSheet, categories, opts.history);
 
   try {
-    const raw = PROXY_URL
-      ? await viaProxy(prompt, opts.signal)
-      : await viaGemini(prompt, opts.signal);
-
-    const answer = raw.trim();
+    // Low but not zero: the figures in the brief are fixed, only wording varies.
+    const answer = await generateText(prompt, {
+      kind: 'ask',
+      temperature: 0.2,
+      maxOutputTokens: MAX_OUTPUT_TOKENS,
+      signal: opts.signal,
+    });
     if (!answer) {
       return { ok: false, answer: '', error: 'The model returned nothing. Try rephrasing.' };
     }
@@ -163,44 +169,4 @@ export async function askAboutMoney(
       error: /abort/i.test(message) ? 'Cancelled.' : message,
     };
   }
-}
-
-async function viaGemini(prompt: string, signal?: AbortSignal): Promise<string> {
-  const url = `${GEMINI_API}/models/${MODEL}:generateContent?key=${encodeURIComponent(GEMINI_KEY)}`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    signal,
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: {
-        // Low but not zero: the figures are fixed, only the wording varies.
-        temperature: 0.2,
-        maxOutputTokens: MAX_OUTPUT_TOKENS,
-      },
-    }),
-  });
-
-  if (!res.ok) {
-    const detail = await res.text().catch(() => '');
-    const reason = /"message"\s*:\s*"([^"]+)"/.exec(detail)?.[1];
-    throw new Error(`Gemini ${res.status}${reason ? `: ${reason}` : ''}`);
-  }
-
-  const json = await res.json();
-  return json?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
-}
-
-async function viaProxy(prompt: string, signal?: AbortSignal): Promise<string> {
-  const res = await fetch(PROXY_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(PROXY_TOKEN ? { 'x-finlo-token': PROXY_TOKEN } : {}),
-    },
-    signal,
-    body: JSON.stringify({ prompt, kind: 'ask' }),
-  });
-  if (!res.ok) throw new Error(`Proxy ${res.status}`);
-  return await res.text();
 }

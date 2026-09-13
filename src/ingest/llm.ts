@@ -19,6 +19,7 @@
  */
 
 import type { Category, ID } from '../core/types';
+import { aiEnabled } from './aiToggle';
 
 const PROXY_URL = process.env.EXPO_PUBLIC_LLM_PROXY_URL ?? '';
 const GEMINI_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY ?? '';
@@ -55,7 +56,12 @@ const BATCH_SIZE = 25;
 
 
 export interface LlmStatus {
+  /** A transport exists AND the user has AI switched on — i.e. a call will happen. */
   configured: boolean;
+  /** A transport exists (proxy or key), regardless of the user's switch. */
+  hasTransport: boolean;
+  /** The user's AI switch. False here with `hasTransport` true means "off, on purpose". */
+  enabled: boolean;
   transport: 'proxy' | 'direct' | 'none';
   name: string;
   /** True when the key ships inside the app and is therefore extractable. */
@@ -63,29 +69,43 @@ export interface LlmStatus {
   note: string;
 }
 
+const AI_OFF_NOTE =
+  'Switched off in Settings to avoid usage costs. Unrecognised merchants go to the review queue instead.';
+
 export function llmStatus(): LlmStatus {
+  const on = aiEnabled();
   if (PROXY_URL) {
     return {
-      configured: true,
+      configured: on,
+      hasTransport: true,
+      enabled: on,
       transport: 'proxy',
       name: 'Proxy',
       keyInBundle: false,
-      note: PROXY_TOKEN
-        ? 'Requests go through your server. The Gemini key never ships in the app, and the app token can be rotated remotely.'
-        : 'Requests go through your server; the Gemini key never ships in the app. Set EXPO_PUBLIC_LLM_PROXY_TOKEN to gate it.',
+      note: !on
+        ? AI_OFF_NOTE
+        : PROXY_TOKEN
+          ? 'Requests go through your server. The Gemini key never ships in the app, and the app token can be rotated remotely.'
+          : 'Requests go through your server; the Gemini key never ships in the app. Set EXPO_PUBLIC_LLM_PROXY_TOKEN to gate it.',
     };
   }
   if (GEMINI_KEY) {
     return {
-      configured: true,
+      configured: on,
+      hasTransport: true,
+      enabled: on,
       transport: 'direct',
       name: `Gemini (${activeModel})`,
       keyInBundle: true,
-      note: 'Key is embedded in the app bundle and can be extracted. Cap its quota, and move to a proxy before any public release.',
+      note: !on
+        ? AI_OFF_NOTE
+        : 'Key is embedded in the app bundle and can be extracted. Cap its quota, and move to a proxy before any public release.',
     };
   }
   return {
     configured: false,
+    hasTransport: false,
+    enabled: on,
     transport: 'none',
     name: 'Not configured',
     keyInBundle: false,
@@ -153,7 +173,11 @@ export async function classifyWithLlmDetailed(
 ): Promise<LlmRun> {
   const status = llmStatus();
   if (!status.configured) {
-    return { suggestions: [], requested: 0, error: 'No AI is configured.' };
+    return {
+      suggestions: [],
+      requested: 0,
+      error: status.hasTransport ? 'AI is switched off in Settings.' : 'No AI is configured.',
+    };
   }
   if (descriptors.length === 0) return { suggestions: [], requested: 0 };
 
@@ -524,7 +548,11 @@ export async function pingLlm(
 ): Promise<{ ok: boolean; detail: string; model: string }> {
   const status = llmStatus();
   if (!status.configured) {
-    return { ok: false, detail: 'No AI is configured.', model: status.name };
+    return {
+      ok: false,
+      detail: status.hasTransport ? 'AI is switched off in Settings.' : 'No AI is configured.',
+      model: status.name,
+    };
   }
 
   const probes = ['COFFEE SHOP LAGOS', 'UBER TRIP', 'PHARMACY PURCHASE'];

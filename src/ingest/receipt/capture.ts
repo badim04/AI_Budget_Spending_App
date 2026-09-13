@@ -13,6 +13,7 @@
 import { Platform } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
+import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
 import { parseReceipt, type ParsedReceipt } from './parse';
 import { tryRecognise } from './ocr';
@@ -194,7 +195,20 @@ export async function processAsset(
     updatedAt: stamp,
   };
 
-  const ocr = await tryRecognise(fileUri, 'image/jpeg');
+  return ocrAndParse(receipt, opts.defaultCurrency);
+}
+
+/**
+ * Read a stored receipt (image or PDF) and turn it into a draft.
+ *
+ * Split out from `processAsset` so the image path and the PDF path share one
+ * copy of "OCR, then parse, and if OCR is off or fails keep the file anyway".
+ * That fallback is the whole reason capture is worth having without a key: a
+ * receipt with no reading is still filed and searchable, and the user types one
+ * number instead of five.
+ */
+async function ocrAndParse(receipt: Receipt, defaultCurrency: CurrencyCode): Promise<CaptureOutcome> {
+  const ocr = await tryRecognise(receipt.fileUri, receipt.mimeType);
 
   if (!ocr.ok) {
     return {
@@ -212,7 +226,7 @@ export async function processAsset(
   }
 
   const parsed = parseReceipt(ocr.result.text, {
-    defaultCurrency: opts.defaultCurrency,
+    defaultCurrency,
     today: today(),
   });
 
@@ -234,6 +248,123 @@ export async function processAsset(
     parsed,
     ocrNote: parsed.warnings.length ? parsed.warnings.join(' · ') : null,
   };
+}
+
+// --------------------------------------------------------------- PDF receipts
+
+/** A picked PDF: uri plus what the OS told us about it. */
+export interface PickedDocument {
+  uri: string;
+  name?: string;
+  mimeType?: string;
+}
+
+/**
+ * Pick one or many PDFs.
+ *
+ * Reuses `expo-document-picker` — already in the app for statement import, so
+ * this ships over the air with no new native module. Restricted to PDFs: an
+ * emailed invoice or a fintech receipt is a PDF, and letting images in here
+ * would just duplicate the photo path with worse ergonomics.
+ */
+export async function pickDocuments(limit: number): Promise<PickedDocument[]> {
+  const res = await DocumentPicker.getDocumentAsync({
+    type: 'application/pdf',
+    multiple: limit > 1,
+    copyToCacheDirectory: true,
+  });
+  if (res.canceled || !res.assets?.length) throw new CancelledError();
+  return res.assets.slice(0, limit).map((a) => ({
+    uri: a.uri,
+    name: a.name,
+    mimeType: a.mimeType ?? 'application/pdf',
+  }));
+}
+
+/**
+ * Persist a picked PDF as-is (no downscale — it is not an image).
+ *
+ * Native: a real file under the receipts directory. Web: a data URL, so it
+ * survives a reload the way the image path's data URL does; a blob: URL would
+ * be revoked when the tab closes.
+ */
+async function storePdf(uri: string, id: string): Promise<{ fileUri: string; byteSize: number }> {
+  if (Platform.OS === 'web') {
+    const blob = await (await fetch(uri)).blob();
+    const dataUrl: string = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(blob);
+    });
+    return { fileUri: dataUrl, byteSize: blob.size };
+  }
+
+  const dir = await FileSystem.getInfoAsync(RECEIPT_DIR);
+  if (!dir.exists) {
+    await FileSystem.makeDirectoryAsync(RECEIPT_DIR, { intermediates: true });
+  }
+  const target = `${RECEIPT_DIR}${id}.pdf`;
+  await FileSystem.copyAsync({ from: uri, to: target });
+  const info = await FileSystem.getInfoAsync(target);
+  return { fileUri: target, byteSize: info.exists ? (info.size ?? 0) : 0 };
+}
+
+/** Store and read one already-picked PDF. */
+export async function processDocument(
+  doc: PickedDocument,
+  opts: { defaultCurrency: CurrencyCode; id: string }
+): Promise<CaptureOutcome> {
+  const { fileUri, byteSize } = await storePdf(doc.uri, opts.id);
+  const stamp = nowISO();
+
+  const receipt: Receipt = {
+    id: opts.id,
+    fileUri,
+    mimeType: 'application/pdf',
+    byteSize,
+    status: 'ocr_pending',
+    capturedAt: stamp,
+    createdAt: stamp,
+    updatedAt: stamp,
+  };
+
+  return ocrAndParse(receipt, opts.defaultCurrency);
+}
+
+/**
+ * Pick and process up to `limit` PDF receipts in one go.
+ *
+ * Same shape and the same one-at-a-time discipline as `captureReceipts`: OCR
+ * providers rate-limit, and a failure on one PDF must not lose the others.
+ */
+export async function captureDocuments(opts: {
+  defaultCurrency: CurrencyCode;
+  limit?: number;
+  idFor: (index: number) => string;
+  onProgress?: (p: BatchProgress) => void;
+}): Promise<BatchResult> {
+  const docs = await pickDocuments(opts.limit ?? 10);
+  const outcomes: CaptureOutcome[] = [];
+  const failures: Array<{ index: number; reason: string }> = [];
+
+  opts.onProgress?.({ done: 0, total: docs.length, last: null });
+
+  for (let i = 0; i < docs.length; i++) {
+    try {
+      const outcome = await processDocument(docs[i], {
+        defaultCurrency: opts.defaultCurrency,
+        id: opts.idFor(i),
+      });
+      outcomes.push(outcome);
+      opts.onProgress?.({ done: i + 1, total: docs.length, last: outcome });
+    } catch (e) {
+      failures.push({ index: i, reason: e instanceof Error ? e.message : String(e) });
+      opts.onProgress?.({ done: i + 1, total: docs.length, last: null });
+    }
+  }
+
+  return { outcomes, failures };
 }
 
 

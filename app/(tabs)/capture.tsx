@@ -31,6 +31,7 @@ import {
   PermissionDeniedError,
   captureReceipt,
   captureReceipts,
+  captureDocuments,
   type CaptureSource,
 } from '../../src/ingest/receipt/capture';
 import { putBatch, type PendingReceipt } from '../../src/ingest/receipt/batchStore';
@@ -62,6 +63,7 @@ export default function CaptureScreen() {
 
   const [busy, setBusy] = useState<CaptureSource | null>(null);
   const [batchBusy, setBatchBusy] = useState<{ done: number; total: number } | null>(null);
+  const [docBusy, setDocBusy] = useState<{ done: number; total: number } | null>(null);
   const [gmailReady, setGmailReady] = useState<boolean | null>(null);
 
   const currency = settings.display_currency ?? 'NGN';
@@ -171,6 +173,80 @@ export default function CaptureScreen() {
     }
   }, [accounts.length, currency, saveReceipt]);
 
+  /**
+   * PDF receipts — an emailed invoice or a fintech receipt, one or several.
+   *
+   * A PDF is stored as-is and read by the same OCR that reads a photo (which
+   * accepts PDFs on a different engine). If reading is off or fails, the file is
+   * still saved and the amount is typed — the same graceful fallback the photo
+   * path has. One PDF goes straight to the confirm form; several go to the batch
+   * review.
+   */
+  const runDocuments = useCallback(async () => {
+    if (accounts.length === 0) {
+      notify('Add an account first', 'Settings › Accounts, so there is somewhere to file it.');
+      return;
+    }
+    setDocBusy({ done: 0, total: 0 });
+    try {
+      const stamp = Date.now().toString(36);
+      const result = await captureDocuments({
+        defaultCurrency: currency,
+        limit: 10,
+        idFor: (i) => `rcpt_${stamp}_pdf_${i}`,
+        onProgress: (p) => setDocBusy({ done: p.done, total: p.total }),
+      });
+
+      const pending: PendingReceipt[] = [];
+      for (const outcome of result.outcomes) {
+        await saveReceipt(outcome.receipt);
+        pending.push({
+          receiptId: outcome.receipt.id,
+          fileUri: outcome.receipt.fileUri,
+          merchant: outcome.receipt.merchant ?? null,
+          totalMinor: outcome.receipt.totalMinor ?? null,
+          date: outcome.receipt.date ?? null,
+          currency: outcome.receipt.currency ?? currency,
+          note: outcome.ocrNote,
+        });
+      }
+
+      if (pending.length === 0) {
+        notify('Nothing read', result.failures[0]?.reason ?? 'No PDF could be read.');
+        return;
+      }
+      if (result.failures.length > 0) {
+        notify(
+          `${result.failures.length} PDF${result.failures.length === 1 ? '' : 's'} skipped`,
+          'The rest are ready to review.'
+        );
+      }
+
+      // One PDF straight to the confirm form; several to the batch review.
+      if (result.outcomes.length === 1) {
+        const only = result.outcomes[0].receipt;
+        const decimals = currencyMeta(only.currency ?? currency).decimals;
+        router.push({
+          pathname: '/transaction/new',
+          params: {
+            receiptId: only.id,
+            amount: only.totalMinor != null ? String(only.totalMinor / 10 ** decimals) : '',
+            merchant: only.merchant ?? '',
+            date: only.date ?? '',
+            currency: only.currency ?? currency,
+          },
+        });
+      } else {
+        router.push({ pathname: '/receipts', params: { token: putBatch(pending) } });
+      }
+    } catch (e) {
+      if (e instanceof CancelledError) return;
+      notify('Could not read the PDF', e instanceof Error ? e.message : String(e));
+    } finally {
+      setDocBusy(null);
+    }
+  }, [accounts.length, currency, saveReceipt]);
+
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: c.canvas }}
@@ -255,6 +331,21 @@ export default function CaptureScreen() {
             onPress={() => runCapture('library')}
           />
           <Tile
+            tone="green"
+            tag={
+              docBusy
+                ? docBusy.total > 0
+                  ? `${docBusy.done}/${docBusy.total}`
+                  : 'Opening'
+                : 'PDF'
+            }
+            title="PDF receipt"
+            subtitle="An emailed invoice or receipt — one or several"
+            glyph="📑"
+            index={5}
+            onPress={() => void runDocuments()}
+          />
+          <Tile
             tone="amber"
             tag={
               gmailReady ? 'Connected' : gmailConfigured() ? 'Set up' : 'Needs client ID'
@@ -262,7 +353,7 @@ export default function CaptureScreen() {
             title="Gmail"
             subtitle={gmailReady ? 'Sync bank alerts and receipts' : 'Read-only inbox scan'}
             glyph="📧"
-            index={5}
+            index={6}
             onPress={() => router.push(gmailReady ? '/review' : '/settings')}
           />
         </TileGrid>

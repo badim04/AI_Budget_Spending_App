@@ -12,6 +12,8 @@
  * recorded decision, not an accident.
  */
 
+import { getActiveLocale, symbolPosition } from './locale';
+
 export type CurrencyCode = string; // ISO 4217, e.g. "NGN", "USD", "JPY"
 
 export interface Money {
@@ -333,7 +335,7 @@ export interface FormatOptions {
 
 export function formatMoney(a: Money, opts: FormatOptions = {}): string {
   const meta = currencyMeta(a.currency);
-  const locale = opts.locale ?? 'en-US';
+  const locale = opts.locale ?? getActiveLocale();
   const value = toDecimal(a);
   const negative = a.minor < 0;
   const magnitude = Math.abs(value);
@@ -349,9 +351,16 @@ export function formatMoney(a: Money, opts: FormatOptions = {}): string {
     });
   }
 
-  const unit = opts.useCode ? `${meta.code} ` : meta.symbol;
   const sign = negative ? '-' : opts.signed ? '+' : '';
-  return `${sign}${unit}${body}`;
+
+  // The ISO code always reads as a prefix ("NGN 1,234"); a symbol follows the
+  // number in the locales that write it that way ("1.234,56 €"). English keeps
+  // the symbol in front regardless, which is what NGN/GBP/USD users expect.
+  if (opts.useCode) return `${sign}${meta.code} ${body}`;
+  if (symbolPosition(locale, a.currency) === 'suffix') {
+    return `${sign}${body} ${meta.symbol}`;
+  }
+  return `${sign}${meta.symbol}${body}`;
 }
 
 function abbreviateNumber(n: number): string {

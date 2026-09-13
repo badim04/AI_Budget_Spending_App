@@ -6,7 +6,7 @@
  * something silently isn't working, this is the screen that says so.
  */
 
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   ScrollView,
   View,
@@ -45,6 +45,8 @@ import { Spot } from '../../src/components/art/Spot';
 import { useAppStore } from '../../src/store/useAppStore';
 import { pingLlm } from '../../src/ingest/llm';
 import { CURRENCIES, formatMoney, money } from '../../src/core/money';
+import { LOCALE_OPTIONS, resolveLocale } from '../../src/core/locale';
+import { formatDate } from '../../src/core/dates';
 import { accountBalance } from '../../src/core/analytics';
 import { ocrStatus } from '../../src/ingest/receipt/ocr';
 import {
@@ -96,6 +98,7 @@ export default function SettingsScreen() {
   const repositoryKind = useAppStore((s) => s.repositoryKind);
   const ota = useOtaUpdates();
   const llm = llmStatus();
+  const aiOn = settings.ai_enabled !== 'false';
   const budgets = useAppStore((s) => s.budgets);
   const allTransactions = useAppStore((s) => s.transactions);
   const allCategories = useAppStore((s) => s.categories);
@@ -117,10 +120,36 @@ export default function SettingsScreen() {
   const [newAccountName, setNewAccountName] = useState('');
   const [currencyOpen, setCurrencyOpen] = useState(false);
   const [greetingOpen, setGreetingOpen] = useState(false);
+  const [localeOpen, setLocaleOpen] = useState(false);
   const [gmailReady, setGmailReady] = useState(false);
   const [connecting, setConnecting] = useState(false);
 
+  // Editing your name from the top of the page, where it belongs.
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [nameDraft, setNameDraft] = useState('');
+  // The "Accounts" tile has nowhere of its own to go — accounts are managed
+  // further down this same page — so it scrolls there and focuses the field.
+  const scrollRef = useRef<ScrollView>(null);
+  const accountInputRef = useRef<TextInput>(null);
+  const accountsY = useRef(0);
+
+  function openProfile() {
+    setNameDraft((settings.user_name ?? '').trim());
+    setProfileOpen(true);
+  }
+  function saveProfile() {
+    setSetting('user_name', nameDraft.trim());
+    setProfileOpen(false);
+  }
+
   const displayCurrency = settings.display_currency ?? 'NGN';
+  // Region/format: the stored setting ('auto' or a tag) and the tag actually in
+  // effect, so the row's sample shows what the device resolves to under 'auto'.
+  const localeSetting = settings.locale ?? 'auto';
+  const localeLabel =
+    LOCALE_OPTIONS.find((o) => o.code === localeSetting)?.label ?? 'Automatic (device)';
+  const effectiveLocale = resolveLocale(localeSetting);
+  const formatSample = `${formatMoney(money(1_234_50, displayCurrency), { locale: effectiveLocale })} · ${formatDate('2026-08-05', 'medium', effectiveLocale)}`;
   const liveTransactionCount = transactions.filter((x) => !x.deletedAt).length;
   const goals = allGoals.filter((g) => !g.archived);
   const greetingSettings = readGreetingSettings(settings);
@@ -166,6 +195,7 @@ export default function SettingsScreen() {
 
   return (
     <ScrollView
+      ref={scrollRef}
       style={{ flex: 1, backgroundColor: c.canvas }}
       contentContainerStyle={{
         paddingTop: insets.top + sp.lg,
@@ -188,6 +218,51 @@ export default function SettingsScreen() {
           if (next.pace !== undefined) setSetting('greeting_mix_pace', next.pace);
         }}
       />
+
+      {/* Editing your name, opened from the identity card. A draft rather than
+          writing on every keystroke, so a half-typed name never becomes the
+          greeting, and the backdrop saves rather than discards — closing an
+          editor should not silently throw away what you typed.
+
+          The backdrop is a sibling of the card, not its parent: on web a tap
+          bubbles up through nested Pressables, so a card *inside* the backdrop
+          would close the moment you tapped the field to type. */}
+      <Modal visible={profileOpen} transparent animationType="fade" onRequestClose={saveProfile}>
+        <View style={{ flex: 1, justifyContent: 'center', padding: sp.xl }}>
+          <Pressable
+            style={[StyleSheet.absoluteFill, { backgroundColor: c.scrim }]}
+            onPress={saveProfile}
+            accessibilityLabel="Close"
+          />
+          <View style={{ backgroundColor: c.surface, borderRadius: r.lg, padding: sp.lg }}>
+            <Text style={[t.heading, { color: c.textPrimary }]}>Your name</Text>
+            <Text style={[t.micro, { color: c.textMuted, marginTop: sp.xs, marginBottom: sp.md }]}>
+              What should Finlo call you? It’s used in your greeting and stays on this device.
+            </Text>
+            <TextInput
+              value={nameDraft}
+              onChangeText={setNameDraft}
+              autoFocus
+              placeholder="e.g. Adebayo"
+              placeholderTextColor={c.textMuted}
+              returnKeyType="done"
+              onSubmitEditing={saveProfile}
+              maxLength={40}
+              style={{
+                color: c.textPrimary,
+                backgroundColor: c.surfaceSunken,
+                borderRadius: r.md,
+                paddingHorizontal: sp.md,
+                paddingVertical: sp.md,
+                fontSize: 16,
+              }}
+            />
+            <View style={{ marginTop: sp.md }}>
+              <Button label="Save" onPress={saveProfile} />
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/*
         You, before your preferences.
@@ -213,37 +288,61 @@ export default function SettingsScreen() {
           padding: sp.lg,
         }}
       >
-        <View
-          style={{
-            width: 56,
-            height: 56,
-            borderRadius: 28,
-            alignItems: 'center',
-            justifyContent: 'center',
-            backgroundColor: c.accentSubtle,
-            borderWidth: StyleSheet.hairlineWidth,
-            borderColor: c.accent,
-          }}
+        {/* Tap yourself to edit yourself. The name lived in a text box buried
+            under Appearance, which is nobody's first guess and is why "add your
+            name" read as a dead label. The avatar and name are the obvious
+            target, so they are the one that opens the editor. Currency stays a
+            separate control beside it — nesting the two pressables would let a
+            tap on currency bubble up and open both on web. */}
+        <Pressable
+          onPress={openProfile}
+          accessibilityRole="button"
+          accessibilityLabel={`${(settings.user_name ?? '').trim() || 'Add your name'}. Edit your name.`}
+          style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}
         >
-          {(settings.user_name ?? '').trim() ? (
-            <Text style={[t.title, { color: c.accent }]}>
-              {(settings.user_name ?? '').trim().charAt(0).toUpperCase()}
-            </Text>
-          ) : (
-            <Ionicons name="person-outline" size={24} color={c.accent} />
-          )}
-        </View>
+          <View
+            style={{
+              width: 56,
+              height: 56,
+              borderRadius: 28,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: c.accentSubtle,
+              borderWidth: StyleSheet.hairlineWidth,
+              borderColor: c.accent,
+            }}
+          >
+            {(settings.user_name ?? '').trim() ? (
+              <Text style={[t.title, { color: c.accent }]}>
+                {(settings.user_name ?? '').trim().charAt(0).toUpperCase()}
+              </Text>
+            ) : (
+              <Ionicons name="person-outline" size={24} color={c.accent} />
+            )}
+          </View>
 
-        <View style={{ flex: 1, marginLeft: sp.lg }}>
-          <Text style={[t.heading, { color: c.textPrimary }]} numberOfLines={1}>
-            {(settings.user_name ?? '').trim() || 'Add your name'}
-          </Text>
-          <Text style={[t.micro, { color: c.textMuted, marginTop: 2 }]}>
-            {liveTransactionCount} transaction{liveTransactionCount === 1 ? '' : 's'} ·{' '}
-            {accounts.length} account{accounts.length === 1 ? '' : 's'} · {goals.length} goal
-            {goals.length === 1 ? '' : 's'}
-          </Text>
-        </View>
+          <View style={{ flex: 1, marginLeft: sp.lg }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Text
+                style={[t.heading, { color: c.textPrimary, flexShrink: 1 }]}
+                numberOfLines={1}
+              >
+                {(settings.user_name ?? '').trim() || 'Add your name'}
+              </Text>
+              <Ionicons
+                name="create-outline"
+                size={15}
+                color={c.textMuted}
+                style={{ marginLeft: 6 }}
+              />
+            </View>
+            <Text style={[t.micro, { color: c.textMuted, marginTop: 2 }]}>
+              {liveTransactionCount} transaction{liveTransactionCount === 1 ? '' : 's'} ·{' '}
+              {accounts.length} account{accounts.length === 1 ? '' : 's'} · {goals.length} goal
+              {goals.length === 1 ? '' : 's'}
+            </Text>
+          </View>
+        </Pressable>
 
         {/* Display currency was eight chips filling a card near the top of the
             page, for something most people set once. It shows its value and
@@ -255,6 +354,7 @@ export default function SettingsScreen() {
           style={{
             flexDirection: 'row',
             alignItems: 'center',
+            marginLeft: sp.sm,
             backgroundColor: c.accentSubtle,
             borderRadius: r.pill,
             paddingHorizontal: sp.md,
@@ -281,6 +381,17 @@ export default function SettingsScreen() {
           value={describeGreetingChoice(greetingSettings)}
           hint={greeting(new Date(), greetingSettings)}
           onPress={() => setGreetingOpen(true)}
+        />
+        {/* Number & date format. Sibling to the greeting language: both are how
+            the app presents itself to you. The hint is a live sample in the
+            format in effect, so the row answers "what will my amounts look
+            like?" without being opened. */}
+        <SettingsRow
+          icon="🌍"
+          label="Number & date format"
+          value={localeLabel}
+          hint={formatSample}
+          onPress={() => setLocaleOpen(true)}
         />
         <SettingsRow
           icon="🎯"
@@ -337,6 +448,62 @@ export default function SettingsScreen() {
         </Pressable>
       </Modal>
 
+      <Modal visible={localeOpen} transparent animationType="fade" onRequestClose={() => setLocaleOpen(false)}>
+        <Pressable
+          style={{ flex: 1, backgroundColor: c.scrim, justifyContent: 'center', padding: sp.xl }}
+          onPress={() => setLocaleOpen(false)}
+        >
+          {/* Stop a tap inside the sheet from closing it. */}
+          <Pressable
+            onPress={() => {}}
+            style={{ backgroundColor: c.surface, borderRadius: r.lg, maxHeight: '80%' }}
+          >
+            <View style={{ padding: sp.lg, paddingBottom: sp.sm }}>
+              <Text style={[t.heading, { color: c.textPrimary }]}>Number & date format</Text>
+              <Text style={[t.micro, { color: c.textMuted, marginTop: sp.xs }]}>
+                How amounts and dates are written. This does not translate the app or change your
+                currency — it is grouping, decimals and date order. Each row shows a sample.
+              </Text>
+            </View>
+            <ScrollView style={{ paddingHorizontal: sp.lg }} contentContainerStyle={{ paddingBottom: sp.lg }}>
+              {LOCALE_OPTIONS.map((opt) => {
+                const on = opt.code === localeSetting;
+                const loc = resolveLocale(opt.code);
+                const sample = `${formatMoney(money(1_234_50, displayCurrency), { locale: loc })} · ${formatDate('2026-08-05', 'short', loc)}`;
+                return (
+                  <Pressable
+                    key={opt.code}
+                    onPress={() => {
+                      setSetting('locale', opt.code);
+                      setLocaleOpen(false);
+                    }}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected: on }}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      paddingVertical: sp.md,
+                      paddingHorizontal: sp.md,
+                      borderRadius: r.lg,
+                      marginBottom: sp.sm,
+                      backgroundColor: on ? c.accentSubtle : c.surfaceSunken,
+                      borderWidth: StyleSheet.hairlineWidth,
+                      borderColor: on ? c.accent : c.border,
+                    }}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={[t.body, { color: on ? c.accent : c.textPrimary }]}>{opt.label}</Text>
+                      <Text style={[t.micro, { color: c.textMuted, marginTop: 1 }]}>{sample}</Text>
+                    </View>
+                    {on ? <Ionicons name="checkmark" size={18} color={c.accent} /> : null}
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       {/*
         What is actually working, three across, before anything else.
 
@@ -358,8 +525,8 @@ export default function SettingsScreen() {
             index={1}
             label="AI sorting"
             value={llm.configured ? 'On' : 'Off'}
-            caption={llm.configured ? llm.name : 'No key'}
-            tone={llm.configured ? undefined : 'amber'}
+            caption={llm.configured ? llm.name : llm.hasTransport ? 'Switched off' : 'No key'}
+            tone={llm.configured || llm.hasTransport ? undefined : 'amber'}
           />
           <StatTile
             index={2}
@@ -387,7 +554,9 @@ export default function SettingsScreen() {
             tone="violet"
             tag={llm.configured ? 'Active' : 'Off'}
             title="AI sorting"
-            subtitle={llm.configured ? llm.name : 'Not configured'}
+            subtitle={
+              llm.configured ? llm.name : llm.hasTransport ? 'Switched off' : 'Not configured'
+            }
             glyph="✨"
             index={0}
             onPress={() => router.push('/import')}
@@ -408,6 +577,13 @@ export default function SettingsScreen() {
             subtitle={accounts.length ? accounts.map((a) => a.name).join(', ') : 'None yet'}
             glyph="🏦"
             index={2}
+            onPress={() => {
+              scrollRef.current?.scrollTo({
+                y: Math.max(0, accountsY.current - sp.md),
+                animated: true,
+              });
+              accountInputRef.current?.focus();
+            }}
           />
           <Tile
             tone="amber"
@@ -422,6 +598,10 @@ export default function SettingsScreen() {
       </View>
 
       {/* ------------------------------------------------------- accounts */}
+      {/* A zero-height marker so the Accounts tile above can scroll here — the
+          tile has no screen of its own, because accounts are managed right on
+          this page. */}
+      <View onLayout={(e) => (accountsY.current = e.nativeEvent.layout.y)} />
       {/* Accounts as cards with a balance and their own colour, not a divided
           list. An account is a place your money lives — it should look like a
           thing, not a row in a table. */}
@@ -482,6 +662,7 @@ export default function SettingsScreen() {
 
         <View style={{ flexDirection: 'row', alignItems: 'center', padding: sp.md, paddingTop: 0 }}>
           <TextInput
+            ref={accountInputRef}
             value={newAccountName}
             onChangeText={setNewAccountName}
             placeholder="Add an account"
@@ -534,12 +715,49 @@ export default function SettingsScreen() {
           hint={gmailConfigured() ? undefined : 'Add EXPO_PUBLIC_GOOGLE_CLIENT_ID_* to .env — see docs/SETUP.md.'}
           onPress={gmailReady ? () => router.push('/review') : handleConnectGmail}
         />
+        {/* The master AI switch — the cost lever. Off means no descriptor,
+            question or summary is ever sent to Gemini; everything else still
+            works, unknown rows just wait in review. The proxy is the harder
+            switch (it holds when the APK is in a stranger's hands); this is the
+            free, instant one. */}
+        <SettingsRow
+          icon="🤖"
+          label="Use AI"
+          hint={
+            aiOn
+              ? llm.hasTransport
+                ? 'On. Gemini sorts the rows the offline layers can’t, and powers Ask and month summaries. Turn it off any time to stop all AI usage — and its cost.'
+                : 'On, but nothing is configured yet. Add a key or deploy the proxy (see below) to use it.'
+              : 'Off. Nothing is sent to Gemini — not a transaction, a question or a summary. Unknown rows simply wait in the review queue.'
+          }
+          right={
+            <Switch
+              value={aiOn}
+              onValueChange={(next: boolean) => setSetting('ai_enabled', next ? 'true' : 'false')}
+              trackColor={{ true: c.accent, false: c.border }}
+            />
+          }
+        />
         <SettingsRow
           icon="✨"
           label="AI fallback"
-          value={llm.configured ? llm.name : 'Not configured'}
-          tone={llm.configured ? (llm.keyInBundle ? 'warning' : 'good') : 'neutral'}
-          hint={llm.keyInBundle ? llm.note : undefined}
+          value={
+            !aiOn && llm.hasTransport
+              ? 'Off'
+              : llm.hasTransport
+                ? llm.name
+                : 'Not configured'
+          }
+          tone={
+            !aiOn && llm.hasTransport
+              ? 'neutral'
+              : llm.configured
+                ? llm.keyInBundle
+                  ? 'warning'
+                  : 'good'
+                : 'neutral'
+          }
+          hint={aiOn && llm.keyInBundle ? llm.note : undefined}
         />
         {/* Autosave pots are common here and useless to review one row at a
             time, but plenty of people do not use one — hence a switch, not an
@@ -692,36 +910,10 @@ export default function SettingsScreen() {
 
       {/* ------------------------------------------------------- appearance */}
       <SettingsGroup title="Appearance" divided={false} padded>
-        <Text style={[t.micro, { color: c.textMuted }]}>YOUR NAME</Text>
-        <TextInput
-          value={settings.user_name ?? ''}
-          onChangeText={(next) => setSetting('user_name', next)}
-          placeholder="What should Finlo call you?"
-          placeholderTextColor={c.textMuted}
-          style={{
-            color: c.textPrimary,
-            backgroundColor: c.surfaceSunken,
-            borderRadius: r.md,
-            paddingHorizontal: sp.md,
-            paddingVertical: sp.md,
-            fontSize: 15,
-            marginTop: sp.sm,
-          }}
-        />
-
-        {/*
-          Greet me in my own language.
-
-          Nigeria is the market, and "Good morning" is not the only way anyone
-          here starts a sentence. Each option shows its own greeting rather than
-          just the language name, so the choice is made by reading it — nobody
-          should have to pick a language to find out what it will say.
-
-          "Mix it up" is last because it is the playful option, and a picker
-          whose first entry is the surprising one makes the ordinary choice feel
-          like the odd one.
-        */}
-        <Text style={[t.micro, { color: c.textMuted, marginTop: sp.xl }]}>THEME</Text>
+        {/* Your name now lives at the top of the page, on the identity card
+            you tap to edit — it was here, under Appearance, which is the last
+            place anyone looks for it. */}
+        <Text style={[t.micro, { color: c.textMuted }]}>THEME</Text>
 
         {/*
           Swatches, not names.

@@ -54,23 +54,27 @@ class CloudOcrProvider implements OcrProvider {
   async recognise(imageUri: string, mimeType: string): Promise<OcrResult> {
     if (!this.available) throw new Error('OCR provider is not configured');
 
+    const isPdf = mimeType === 'application/pdf' || imageUri.toLowerCase().endsWith('.pdf');
+
     const form = new FormData();
     form.append('apikey', OCR_API_KEY);
     form.append('isOverlayRequired', 'false');
-    form.append('OCREngine', '2');
+    // Engine 2 reads receipt fonts noticeably better, but it does not take PDFs;
+    // Engine 1 does. So a PDF receipt uses engine 1, a photo keeps engine 2.
+    form.append('OCREngine', isPdf ? '1' : '2');
     form.append('scale', 'true');
+    form.append('filetype', isPdf ? 'PDF' : 'Auto');
+
+    const name = isPdf ? 'receipt.pdf' : 'receipt.jpg';
+    const type = isPdf ? 'application/pdf' : mimeType || 'image/jpeg';
 
     if (Platform.OS === 'web') {
       // On web the uri is a blob: or data: URL, which fetch can turn into a Blob.
       const blob = await (await fetch(imageUri)).blob();
-      form.append('file', blob, 'receipt.jpg');
+      form.append('file', blob, name);
     } else {
       // React Native's FormData takes this shape for a local file uri.
-      form.append('file', {
-        uri: imageUri,
-        name: 'receipt.jpg',
-        type: mimeType || 'image/jpeg',
-      } as unknown as Blob);
+      form.append('file', { uri: imageUri, name, type } as unknown as Blob);
     }
 
     const response = await fetch(OCR_API_URL, { method: 'POST', body: form });
@@ -85,14 +89,21 @@ class CloudOcrProvider implements OcrProvider {
       throw new Error(message);
     }
 
-    const parsed = body.ParsedResults?.[0];
-    const text: string = parsed?.ParsedText ?? '';
-    if (!text.trim()) throw new Error('OCR returned no text — try a sharper photo');
+    // A PDF can be several pages; join them so a receipt whose total sits on
+    // page two is still read. A photo has exactly one result, so this is a
+    // no-op there.
+    const results: Array<{ ParsedText?: string; FileParseExitCode?: number }> =
+      body.ParsedResults ?? [];
+    const text: string = results
+      .map((r) => r?.ParsedText ?? '')
+      .join('\n')
+      .trim();
+    if (!text) throw new Error('OCR returned no text — try a sharper photo or a text-based PDF');
 
     return {
       text,
       // The API reports an exit code rather than a score; 1 means clean.
-      confidence: parsed?.FileParseExitCode === 1 ? 0.85 : 0.5,
+      confidence: results[0]?.FileParseExitCode === 1 ? 0.85 : 0.5,
       provider: this.name,
     };
   }

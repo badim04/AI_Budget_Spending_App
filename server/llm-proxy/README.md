@@ -61,6 +61,22 @@ npm run apk
 Settings → Smart categorisation should read **AI fallback: Proxy**, with no
 warning triangle.
 
+## The model, and Ask / summaries
+
+The proxy defaults to `gemini-3.6-flash` and relays **every** AI feature — the
+categoriser, **Ask Finlo**, and the **month summary** — so one deployment covers
+all of them. (It used to serve categorisation only, which is why Ask through a
+proxy answered nothing.) To pin a different model without touching code, set it
+in `wrangler.toml` and redeploy:
+
+```toml
+[vars]
+GEMINI_MODEL = "gemini-3.6-flash"
+```
+
+The old code was pinned to `gemini-2.0-flash`, which Google has retired — if a
+deployment predates this note, redeploy so it stops 404ing.
+
 ## Add rate limiting (recommended, 1 command)
 
 Without this, the batch caps keep any single request cheap, but nothing stops a

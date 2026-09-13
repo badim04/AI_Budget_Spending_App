@@ -166,7 +166,17 @@ function extractMerchant(lines: string[]): string | null {
  * dd/mm vs mm/dd is resolved by preferring a reading that is not in the
  * future — a receipt is a record of something that already happened.
  */
-export function extractDate(text: string, today?: string): string | null {
+export function extractDate(
+  text: string,
+  today?: string,
+  /**
+   * Which order to prefer when a numeric date is genuinely ambiguous (both
+   * numbers ≤ 12, e.g. "03/04/2026"). Defaults to day-first, which is right for
+   * most of the world; a statement importer that has seen evidence of month-first
+   * elsewhere in the same file passes `'mdy'` so the whole file reads one way.
+   */
+  preferOrder: 'dmy' | 'mdy' = 'dmy'
+): string | null {
   const now = today ?? new Date().toISOString().slice(0, 10);
 
   // ISO first — unambiguous, so it wins outright.
@@ -193,11 +203,16 @@ export function extractDate(text: string, today?: string): string | null {
     const b = +numeric[2];
     const year = +numeric[3];
     // A value above 12 can only be the day, which settles the order outright.
+    // When both are ≤ 12 the caller's preference decides which to try first.
+    const ambiguous =
+      preferOrder === 'mdy'
+        ? [buildDate(year, a, b), buildDate(year, b, a)] // month-first
+        : [buildDate(year, b, a), buildDate(year, a, b)]; // day-first
     const candidates = a > 12
       ? [buildDate(year, b, a)]
       : b > 12
         ? [buildDate(year, a, b)]
-        : [buildDate(year, b, a), buildDate(year, a, b)]; // prefer d/m/y
+        : ambiguous;
     for (const c of candidates) {
       if (c && c <= now) return c;
     }

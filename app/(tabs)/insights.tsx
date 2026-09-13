@@ -1,9 +1,9 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { AppHeader } from '../../src/components/ui/AppHeader';
-import { Card, SectionHeader } from '../../src/components/ui/Primitives';
+import { Button, Card, SectionHeader } from '../../src/components/ui/Primitives';
 import { Screen, Grid, Split } from '../../src/components/ui/Screen';
 import { Ring, type RingSlice } from '../../src/components/charts/Ring';
 import type { Insight } from '../../src/core/types';
@@ -22,7 +22,9 @@ import { allBudgetStatuses } from '../../src/core/budget';
 import { today } from '../../src/core/dates';
 import { copyFor } from '../../src/core/copy';
 import { Mascot } from '../../src/components/art/Mascot';
-import { monthOf } from '../../src/core/periods';
+import { monthOf, isCurrentMonth } from '../../src/core/periods';
+import { buildFactSheet } from '../../src/core/factSheet';
+import { summariseMonth, summaryConfigured, type SummaryResult } from '../../src/ingest/summary';
 import { PeriodBar } from '../../src/components/ui/PeriodBar';
 import { Banner, SegmentedControl, StatRow, StatTile } from '../../src/components/ui/Tiles';
 import { router } from 'expo-router';
@@ -34,6 +36,7 @@ export default function InsightsScreen() {
   const categories = useAppStore((s) => s.categories);
   const accounts = useAppStore((s) => s.accounts);
   const settings = useAppStore((s) => s.settings);
+  const goals = useAppStore((s) => s.goals);
   const fxTable = useAppStore((s) => s.fxTable);
   const asOf = today();
 
@@ -49,7 +52,30 @@ export default function InsightsScreen() {
     [transactions, categories, accounts, settings, fxTable, asOf]
   );
 
+  /**
+   * Open on the month the data lives in, not the calendar's current one.
+   *
+   * The PeriodBar defaults to the month containing today, which on the 2nd of a
+   * month is nearly empty — and an Insights screen that opens with nothing to
+   * say over a full history reads as broken, which is exactly what it looked
+   * like. So until the reader moves the period themselves, it tracks the latest
+   * month that actually holds a transaction; forward from there still reaches
+   * today. It is synced by an effect rather than a `useState` initialiser
+   * because the store can finish loading after this screen first mounts, and
+   * the initialiser would then run against an empty ledger.
+   */
   const [range, setRange] = useState(() => monthOf(asOf));
+  const pickedPeriod = useRef(false);
+  const latestMonth = useMemo(() => {
+    let latest = '';
+    for (const tx of transactions) {
+      if (!tx.deletedAt && tx.date <= asOf && tx.date > latest) latest = tx.date;
+    }
+    return monthOf(latest || asOf);
+  }, [transactions, asOf]);
+  useEffect(() => {
+    if (!pickedPeriod.current) setRange(latestMonth);
+  }, [latestMonth]);
 
   /**
    * Budget statuses feed both the score and the sentences.
@@ -98,9 +124,33 @@ export default function InsightsScreen() {
   );
 
   const insights = useMemo(
-    () => generateInsights(ctx, budgetStatuses),
-    [ctx, budgetStatuses]
+    () => generateInsights(ctx, budgetStatuses, range),
+    [ctx, budgetStatuses, range]
   );
+
+  /**
+   * A written summary of the month on screen — the one AI touch on this page.
+   *
+   * On demand, never on load: it is a paid call, and firing it every time the
+   * tab opens is how a bill creeps. The brief is the same one Ask sends —
+   * redacted, aggregated, no arithmetic asked of the model — anchored to the
+   * period being viewed rather than always to today.
+   */
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summary, setSummary] = useState<SummaryResult | null>(null);
+  // A summary is about one month; moving the period drops the stale one.
+  useEffect(() => {
+    setSummary(null);
+    setSummaryLoading(false);
+  }, [range.start]);
+  const runSummary = React.useCallback(async () => {
+    setSummaryLoading(true);
+    const summaryAsOf = isCurrentMonth(range, asOf) ? asOf : range.end;
+    const sheet = buildFactSheet({ ctx, budgetStatuses, goals, transactions, asOf: summaryAsOf });
+    const result = await summariseMonth(sheet.text);
+    setSummary(result);
+    setSummaryLoading(false);
+  }, [range, asOf, ctx, budgetStatuses, goals, transactions]);
 
   /** Stable for the day — an empty state that rewords itself looks broken. */
   const quiet = copyFor('nothingStandsOut', asOf);
@@ -140,8 +190,69 @@ export default function InsightsScreen() {
       </View>
 
       <View style={{ marginTop: sp.md, marginBottom: sp.md }}>
-        <PeriodBar range={range} onChange={setRange} today={asOf} />
+        <PeriodBar
+          range={range}
+          onChange={(next) => {
+            pickedPeriod.current = true;
+            setRange(next);
+          }}
+          today={asOf}
+        />
       </View>
+
+      {/*
+        The month in a sentence — the one AI touch here, and it earns a tap.
+
+        Only when AI is on and there is something to summarise. On demand, not on
+        load: a paid call should never fire just because a tab opened. The brief
+        is the same redacted, aggregated fact sheet Ask sends — the model phrases,
+        it never calculates.
+      */}
+      {summaryConfigured() && transactions.some((tx) => !tx.deletedAt) ? (
+        <Card style={{ marginBottom: sp.md }}>
+          <View
+            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+              <Text style={{ fontSize: 17, marginRight: 8 }}>✨</Text>
+              <Text style={[t.bodyStrong, { color: c.textPrimary, flex: 1 }]} numberOfLines={1}>
+                {range.label} in a sentence
+              </Text>
+            </View>
+            {!summary && !summaryLoading ? (
+              <Button
+                label="Summarise"
+                size="sm"
+                full={false}
+                variant="secondary"
+                onPress={() => void runSummary()}
+              />
+            ) : null}
+          </View>
+
+          {summaryLoading ? (
+            <Text style={[t.caption, { color: c.textMuted, marginTop: sp.sm }]}>
+              Writing a quick summary…
+            </Text>
+          ) : summary?.ok ? (
+            <Text style={[t.body, { color: c.textSecondary, marginTop: sp.sm }]}>{summary.text}</Text>
+          ) : summary ? (
+            <Text style={[t.caption, { color: c.warning, marginTop: sp.sm }]}>
+              {summary.error ?? 'Could not summarise.'}
+            </Text>
+          ) : (
+            <Text style={[t.caption, { color: c.textMuted, marginTop: sp.sm }]}>
+              A two-line readout of {range.label}, written from your own figures.
+            </Text>
+          )}
+
+          {summary && !summaryLoading ? (
+            <Pressable onPress={() => void runSummary()} hitSlop={6} style={{ marginTop: sp.sm }}>
+              <Text style={[t.micro, { color: c.accent }]}>Write it again ›</Text>
+            </Pressable>
+          ) : null}
+        </Card>
+      ) : null}
 
       {/*
         The score, and immediately the reason for it.

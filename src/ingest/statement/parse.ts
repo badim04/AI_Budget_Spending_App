@@ -135,21 +135,80 @@ function sniffDelimiter(text: string): string {
 
 // -------------------------------------------------------------- column detect
 
+/**
+ * Header synonyms, English first and then the languages a statement is most
+ * likely to arrive in from a non-English bank. Without these a French or German
+ * export fails header detection entirely and imports nothing — the column
+ * layout is fine, the app just could not find where it started. Accents are
+ * matched where a bank writes them (`Débit`, `Libellé`) and also without, since
+ * exports vary.
+ */
 const HEADER_PATTERNS: Record<keyof ColumnMap, RegExp[]> = {
   date: [
     /^(transaction|value|posting|trans|entry|booking)?\.?\s*date/i,
     /^date$/i,
     /^dt$/i,
+    // fr/pt "date", de "Datum"/"Buchungstag", es/pt "fecha"/"data"
+    /^datum$/i,
+    /^buchungstag$/i,
+    /^fecha$/i,
+    /^data$/i,
   ],
   description: [
     /^(transaction\s*)?(description|details|narration|particulars|remarks?|memo|reference\s*text)/i,
     /^narrative$/i,
     /^payee$/i,
+    // fr "libellé"/"motif", de "Verwendungszweck"/"Buchungstext", es "concepto"/"descripción",
+    // pt "descrição"/"histórico"
+    /^libell[ée]/i,
+    /^motif$/i,
+    /^verwendungszweck$/i,
+    /^buchungstext$/i,
+    /^beschreibung$/i,
+    /^concepto$/i,
+    /^descrip/i,
+    /^descri[çc][ãa]o$/i,
+    /^hist[óo]rico$/i,
   ],
-  amount: [/^amount$/i, /^value$/i, /^transaction\s*amount$/i, /^amt$/i],
-  debit: [/^debit/i, /^withdrawal/i, /^money\s*out/i, /^paid\s*out/i, /^dr\b/i],
-  credit: [/^credit/i, /^deposit/i, /^money\s*in/i, /^paid\s*in/i, /^cr\b/i],
-  balance: [/balance/i, /^bal$/i],
+  amount: [
+    /^amount$/i,
+    /^value$/i,
+    /^transaction\s*amount$/i,
+    /^amt$/i,
+    // fr "montant", de "Betrag"/"Umsatz", es "importe"/"monto", pt "valor"/"montante"
+    /^montant$/i,
+    /^betrag$/i,
+    /^umsatz$/i,
+    /^importe$/i,
+    /^monto$/i,
+    /^valor$/i,
+    /^montante$/i,
+  ],
+  debit: [
+    /^debit/i,
+    /^withdrawal/i,
+    /^money\s*out/i,
+    /^paid\s*out/i,
+    /^dr\b/i,
+    // fr "débit", de "Soll", es "cargo"/"débito", pt "débito"
+    /^d[ée]bit/i,
+    /^soll$/i,
+    /^cargo$/i,
+    /^d[ée]bito$/i,
+  ],
+  credit: [
+    /^credit/i,
+    /^deposit/i,
+    /^money\s*in/i,
+    /^paid\s*in/i,
+    /^cr\b/i,
+    // fr "crédit", de "Haben", es "abono"/"crédito", pt "crédito"
+    /^cr[ée]dit/i,
+    /^haben$/i,
+    /^abono$/i,
+    /^cr[ée]dito$/i,
+  ],
+  balance: [/balance/i, /^bal$/i, /^saldo$/i, /^solde$/i, /^kontostand$/i],
   reference: [/^(ref|reference|transaction\s*(id|ref)|txn\s*id|cheque)/i],
 };
 
@@ -233,6 +292,13 @@ export function parseStatementGrid(
   const headers = grid[headerIndex].map((h) => h.trim());
   const rows: StatementRow[] = [];
 
+  // Which way round are the numeric dates? A single "13/04" settles it for the
+  // whole file (13 can only be a day), so one confident cell saves every
+  // ambiguous one from defaulting to the wrong order and silently misdating
+  // transactions into the wrong month — an error the reconciler cannot catch,
+  // because moving a row between months does not change any total.
+  const dateOrder = detectDateOrder(grid);
+
   /**
    * The shape is allowed to change part-way down the file.
    *
@@ -265,7 +331,7 @@ export function parseStatementGrid(
     const dateCell = (cells[columns.date] ?? '').trim();
     if (!dateCell) continue; // trailing totals row, or a blank separator
 
-    const date = normaliseDate(dateCell, opts.today);
+    const date = normaliseDate(dateCell, opts.today, dateOrder);
     if (!date) {
       problems.push({ line: lineNo, reason: `Unreadable date "${dateCell}"`, raw });
       continue;
@@ -382,12 +448,48 @@ export function looksLikeDate(cell: string): boolean {
 }
 
 /** Accepts ISO, d/m/y, m/d/y and written months, resolving ambiguity the same
- *  way the receipt parser does — a statement records the past. */
-function normaliseDate(cell: string, today?: string): string | null {
+ *  way the receipt parser does — a statement records the past. `order` carries
+ *  the file-level decision for genuinely ambiguous numeric dates. */
+function normaliseDate(
+  cell: string,
+  today?: string,
+  order: 'dmy' | 'mdy' = 'dmy'
+): string | null {
   const trimmed = cell.trim();
   if (isValidISODate(trimmed)) return trimmed;
   // Strip any time component before handing it over.
-  return extractDate(trimmed.replace(/\d{1,2}:\d{2}(:\d{2})?/, ''), today);
+  return extractDate(trimmed.replace(/\d{1,2}:\d{2}(:\d{2})?/, ''), today, order);
+}
+
+/**
+ * Decide day-first vs month-first from the file's own evidence.
+ *
+ * Scans every cell for a numeric date and looks for a component that can only
+ * be a day (> 12). If any such date points to day-first and none to month-first
+ * (or vice versa), that order is used for the whole file. Mixed or absent
+ * evidence returns day-first, the safe global default. Layout-independent by
+ * design: it reads every cell rather than trusting a column index that can move
+ * part-way down a multi-account statement.
+ */
+export function detectDateOrder(grid: string[][]): 'dmy' | 'mdy' {
+  const NUMERIC = /^\s*(\d{1,2})[\/.\-](\d{1,2})[\/.\-]\d{2,4}\s*$/;
+  let dmy = 0;
+  let mdy = 0;
+  for (const row of grid) {
+    for (const cell of row) {
+      const m = NUMERIC.exec(cell ?? '');
+      if (!m) continue;
+      const a = +m[1];
+      const b = +m[2];
+      if (a > 12 && b <= 12) dmy += 1; // first field must be the day
+      else if (b > 12 && a <= 12) mdy += 1; // second field must be the day
+    }
+  }
+  // Only override the default when the evidence is one-sided. A file that shows
+  // both is malformed or mixed, and guessing there would be the very error this
+  // is meant to prevent.
+  if (mdy > 0 && dmy === 0) return 'mdy';
+  return 'dmy';
 }
 
 // ------------------------------------------------------------------ filtering

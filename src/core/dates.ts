@@ -8,6 +8,7 @@
  * which silently moves spending between months.
  */
 
+import { getActiveLocale, isEnglishLocale } from './locale';
 import type { BudgetPeriod, Frequency, ISODate, PeriodRange } from './types';
 
 const DAY_MS = 86_400_000;
@@ -373,12 +374,28 @@ export function toMonthlyEquivalent(
 
 export function formatDate(
   date: ISODate,
-  style: 'short' | 'medium' | 'long' | 'day' = 'medium'
+  style: 'short' | 'medium' | 'long' | 'day' = 'medium',
+  /** Override the active locale — used by the Settings picker to preview each
+   *  option's date format without switching the whole app to it. */
+  localeOverride?: string
 ): string {
   const d = parseISODate(date);
   const day = d.getUTCDate();
   const month = d.getUTCMonth();
   const year = d.getUTCFullYear();
+
+  const locale = localeOverride ?? getActiveLocale();
+
+  // Non-English locales get their own day/month order and month names through
+  // Intl; English keeps the hand-built day-first format the app has always used
+  // and the tests pin. `day` is a bare number and is locale-neutral either way.
+  // Every Intl touch is guarded — a stripped Hermes build falls straight back to
+  // the English builder rather than throwing on the first date rendered.
+  if (style !== 'day' && !isEnglishLocale(locale)) {
+    const localized = formatDateIntl(date, style, locale);
+    if (localized) return localized;
+  }
+
   switch (style) {
     case 'short':
       return `${day} ${MONTH_NAMES[month].slice(0, 3)}`;
@@ -388,6 +405,25 @@ export function formatDate(
       return `${DAY_NAMES[d.getUTCDay()]}, ${day} ${MONTH_NAMES[month]} ${year}`;
     case 'day':
       return String(day);
+  }
+}
+
+const INTL_DATE_OPTS: Record<'short' | 'medium' | 'long', Intl.DateTimeFormatOptions> = {
+  short: { day: 'numeric', month: 'short', timeZone: 'UTC' },
+  medium: { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' },
+  long: { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' },
+};
+
+/** Intl formatting for the given locale, or null if Intl is unavailable. */
+function formatDateIntl(
+  date: ISODate,
+  style: 'short' | 'medium' | 'long',
+  locale: string
+): string | null {
+  try {
+    return new Intl.DateTimeFormat(locale, INTL_DATE_OPTS[style]).format(parseISODate(date));
+  } catch {
+    return null;
   }
 }
 

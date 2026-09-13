@@ -12,6 +12,18 @@
         "8081"
       ],
       "port": 8081
+    },
+    {
+      "name": "finlo-web-8082",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "node_modules/expo/bin/cli",
+        "start",
+        "--web",
+        "--port",
+        "8082"
+      ],
+      "port": 8082
     }
   ]
 }

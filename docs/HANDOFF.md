@@ -19,7 +19,7 @@ codebase. Expo SDK 52 + React Native 0.76 + TypeScript, expo-router.
   - work in progress is on branch **`v1.2`**
   - real bank statements are gitignored — they carry a real name, address and
     account number, and `tests/fixtures.ts` says so loudly when they are absent
-- **705 tests pass, none skipped**, `tsc --noEmit -p tsconfig.json` is clean,
+- **738 tests pass, none skipped**, `tsc --noEmit -p tsconfig.json` is clean,
   `npx expo-doctor` passes.
 
 Owner is in Nigeria; default currency NGN. Testers are real people getting an

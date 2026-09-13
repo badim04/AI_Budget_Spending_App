@@ -30,6 +30,8 @@ import {
   type CategorySuggestion,
 } from '../core/categorize';
 import { candidateToRule, detectRecurring, type RecurringCandidate } from '../core/recurring';
+import { setAiEnabled } from '../ingest/aiToggle';
+import { resolveLocale, setActiveLocale } from '../core/locale';
 import type {
   Account,
   Budget,
@@ -159,6 +161,16 @@ export const useAppStore = create<AppState>((set, get) => ({
         for (const c of snapshot.categories) await r.saveCategory(c);
         for (const [k, v] of Object.entries(snapshot.settings)) await r.setSetting(k, v);
       }
+
+      // Push the persisted AI switch into the ingest layer, which cannot read
+      // the store itself (that edge points inward). Missing means on.
+      setAiEnabled(snapshot.settings.ai_enabled !== 'false');
+
+      // Number and date formatting follow the device unless the user chose a
+      // region in Settings. Set before the first render so nothing paints in the
+      // wrong grouping and then flips. `resolveLocale` handles the 'auto'/missing
+      // case by reading the device.
+      setActiveLocale(resolveLocale(snapshot.settings.locale));
 
       // Handy when a device reports the wrong storage backend.
       if (process.env.NODE_ENV !== 'production') {
@@ -517,6 +529,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   setSetting: async (key, value) => {
+    // Keep the AI kill switch's runtime flag in step with the setting, so the
+    // ingest layer sees the change without importing the store.
+    if (key === 'ai_enabled') setAiEnabled(value !== 'false');
+    // Keep the formatters in step the instant the region setting changes, the
+    // same way the AI flag is mirrored — the store edge points inward, so the
+    // core reads the locale from its own module rather than from here.
+    if (key === 'locale') setActiveLocale(resolveLocale(value));
     set((s) => ({ settings: { ...s.settings, [key]: value }, revision: s.revision + 1 }));
     repository().setSetting(key, value).catch((e) => set({ lastError: String(e) }));
   },

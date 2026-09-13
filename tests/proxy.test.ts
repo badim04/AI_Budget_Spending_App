@@ -175,3 +175,38 @@ describe('operational controls', () => {
     expect(res.headers.get('Access-Control-Allow-Origin')).toBe('');
   });
 });
+
+/**
+ * The free-text path that Ask Finlo and the month summary use.
+ *
+ * The proxy used to serve only categorisation, so a `{prompt}` body matched no
+ * `descriptors` and came back as `[]` — Ask through the proxy silently answered
+ * nothing. These pin that it now relays a prompt, under the same gate.
+ */
+describe('free-text prompt path (Ask, summaries)', () => {
+  it('relays a prompt and returns the model text verbatim', async () => {
+    stubGemini('Your spending held steady this month.');
+    const res = await worker.fetch(post({ prompt: 'Summarise my month', kind: 'summary' }, AUTH), env);
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe('Your spending held steady this month.');
+  });
+
+  it('requires the token like every other path', async () => {
+    const spy = stubGemini('should not be reached');
+    const res = await worker.fetch(post({ prompt: 'Summarise' }, { 'x-finlo-token': 'wrong' }), env);
+    expect(res.status).toBe(401);
+    expect(geminiCalls(spy)).toHaveLength(0);
+  });
+
+  it('caps an over-long prompt before spending tokens on it', async () => {
+    const spy = stubGemini('ok');
+    await worker.fetch(post({ prompt: 'A'.repeat(50000) }, AUTH), env);
+    const sent = JSON.parse((geminiCalls(spy)[0] as any[])[1].body);
+    expect(sent.contents[0].parts[0].text.length).toBeLessThanOrEqual(24000);
+  });
+
+  it('honours the kill switch on the prompt path too', async () => {
+    const res = await worker.fetch(post({ prompt: 'Summarise' }, AUTH), { ...env, DISABLED: '1' });
+    expect(res.status).toBe(503);
+  });
+});
