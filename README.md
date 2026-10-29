@@ -1,5 +1,7 @@
 # Finlo
 
+> **Case study:** a plain-English walkthrough of how this works, step by step, with the key code: https://abdulakeem-adebayo.vercel.app/#finlo
+
 <img src="assets/icon.png" width="88" alt="Finlo" align="right" />
 
 Multi-currency personal finance for **Android, iOS and web from one codebase**
